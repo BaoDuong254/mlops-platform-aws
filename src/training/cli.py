@@ -20,6 +20,7 @@ def main() -> None:
         sub.add_argument("--config", type=Path, default=Path("configs/training.yaml"))
         sub.add_argument("--input-dir", type=Path, help="Override dataset directory")
         if command == "train":
+            sub.add_argument("--result-json", type=Path, help="Write and log a structured cloud-training result")
             sub.add_argument("--output-dir", type=Path, help="Override run artifact parent directory")
             sub.add_argument("--track", action="store_true", help="Import the completed run into MLflow")
             sub.add_argument("--mlflow-config", type=Path, default=Path("configs/mlflow.yaml"))
@@ -71,7 +72,22 @@ def main() -> None:
             from training.tracking import import_run, load_tracking_config
 
             result["tracking"] = import_run(run_dir, args.tracking_uri, load_tracking_config(args.mlflow_config))
-        print(json.dumps(result, sort_keys=True))
+        if args.result_json:
+            import hashlib
+            from training.gate import validation_dataset_key
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            metrics = json.loads((run_dir / "metrics.json").read_text())
+            schema = json.loads((run_dir / "feature_schema.json").read_text())
+            result.update(source_run_id=manifest["run_id"],
+                          artifact_checksum=hashlib.sha256((run_dir / "model.txt").read_bytes()).hexdigest(),
+                          source_manifest_sha256=hashlib.sha256((run_dir / "manifest.json").read_bytes()).hexdigest(),
+                          validation_dataset_key=validation_dataset_key(manifest, schema),
+                          validation_mae_minutes=metrics["validation"]["model"]["mae_minutes"])
+            args.result_json.parent.mkdir(parents=True, exist_ok=True)
+            args.result_json.write_text(json.dumps(result, sort_keys=True, allow_nan=False) + "\n")
+            print("MLOPS_TRAINING_RESULT=" + json.dumps(result, sort_keys=True, allow_nan=False))
+        else:
+            print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":

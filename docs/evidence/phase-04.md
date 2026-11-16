@@ -1,5 +1,7 @@
 # Phase 4 — Bằng chứng kiểm chứng canary
 
+> **Lịch sử ngày 05/11:** error gate ở những runs này đếm cả 4xx. Source sau remediation dùng 5xx gate và exact smoke identity; không dùng số liệu bên dưới làm bằng chứng E2E cho các thay đổi mới.
+
 Kiểm chứng ngày **2026-11-05 (UTC)** trên cluster `mlops-aws-dev`, vùng `ap-southeast-1`, Kubernetes 1.36. Tài liệu này chỉ ghi những gì đã quan sát trực tiếp trên cluster; logs thô, mật khẩu và IP cá nhân được giữ ngoài tài liệu public. Thiết kế nằm ở [phase-04-design.md](../phases/phase-04-design.md), vận hành ở [phase-04.md](../phases/phase-04.md).
 
 **Kết luận ngắn.** Canary khỏe được phát hành qua 10% → 50% → 100% và tự promote; canary chậm bị gate độ trễ từ chối và Rollout tự abort; canary không sẵn sàng bị chặn trước khi nhận traffic; sau mỗi lần lỗi, một commit `git revert` đưa Git và cluster về đúng stable trong khoảng 10 giây. Release workflow GitHub đã chạy thật trên `main` ở cả hai nhánh: thành công (mục 12) và canary bị từ chối rồi tự `git revert` (mục 13). **Giới hạn chính:** nhánh từ chối mới được thử bằng request không hợp lệ (4xx), chưa bằng lỗi 5xx hay một model lỗi thật (xem mục Giới hạn).

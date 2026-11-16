@@ -5,71 +5,62 @@ metadata:
   namespace: mlops
 spec:
   args:
-    - name: canary-hash
-    - name: stable-hash
+  - name: canary-hash
+  - name: stable-hash
   metrics:
-    # Tỷ lệ lỗi của canary. Counter lỗi chỉ xuất hiện sau lỗi đầu tiên, nên tử số phải rơi về 0
-    # khi chưa có lỗi (nếu không phép chia rỗng và gate luôn inconclusive). Không có request nào
-    # thì mẫu số rỗng, kết quả là NaN (inconclusive), không phải "đạt".
-    - name: error-rate
-      interval: 30s
-      failureLimit: 1
-      inconclusiveLimit: 3
-      successCondition: result[0] < 0.01
-      failureCondition: result[0] >= 0.01
-      provider:
-        prometheus:
-          address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
-          query: |
-            (
-              (sum(rate(inference_http_errors_total{path="/predict",rollouts_pod_template_hash="{{args.canary-hash}}"}[1m])) or vector(0))
-              /
-              sum(rate(inference_http_requests_total{path="/predict",rollouts_pod_template_hash="{{args.canary-hash}}"}[1m]))
-            ) or (vector(0) / vector(0))
-    # p95 tuyệt đối của canary.
-    - name: p95-latency-seconds
-      interval: 30s
-      failureLimit: 1
-      inconclusiveLimit: 3
-      successCondition: result[0] < 0.5
-      failureCondition: result[0] >= 0.5
-      provider:
-        prometheus:
-          address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
-          query: |
-            histogram_quantile(0.95,
-              sum by (le) (rate(inference_http_request_duration_seconds_bucket{path="/predict",rollouts_pod_template_hash="{{args.canary-hash}}"}[2m]))
-            ) or (vector(0) / vector(0))
-    # p95 của canary không được vượt 1,5 lần p95 của stable cộng 50 ms.
-    # Giá trị < 0 nghĩa là đạt.
-    - name: p95-latency-vs-stable
-      interval: 30s
-      failureLimit: 1
-      inconclusiveLimit: 3
-      successCondition: result[0] < 0
-      failureCondition: result[0] >= 0
-      provider:
-        prometheus:
-          address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
-          query: |
-            (
-              histogram_quantile(0.95, sum by (le) (rate(inference_http_request_duration_seconds_bucket{path="/predict",rollouts_pod_template_hash="{{args.canary-hash}}"}[2m])))
-              -
-              (1.5 * histogram_quantile(0.95, sum by (le) (rate(inference_http_request_duration_seconds_bucket{path="/predict",rollouts_pod_template_hash="{{args.stable-hash}}"}[2m]))) + 0.05)
-            ) or (vector(0) / vector(0))
-    # Cần đủ lượng request ở canary, nếu không các gate trên không có ý nghĩa.
-    - name: canary-request-rate
-      interval: 30s
-      failureLimit: 3
-      inconclusiveLimit: 3
-      successCondition: result[0] >= 0.2
-      failureCondition: result[0] < 0.2
-      provider:
-        prometheus:
-          address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
-          query: |
-            sum(rate(inference_http_requests_total{path="/predict",rollouts_pod_template_hash="{{args.canary-hash}}"}[1m]))
-            or (vector(0) / vector(0))
+  - name: error-rate
+    interval: 30s
+    failureLimit: 1
+    inconclusiveLimit: 3
+    successCondition: result[0] < 0.01
+    failureCondition: result[0] >= 0.01
+    provider:
+      prometheus:
+        address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
+        query: "(\n  (sum(rate(inference_http_errors_total{path=\"/predict\",status=~\"\
+          5..\",rollouts_pod_template_hash=\"{{args.canary-hash}}\"}[1m])) or vector(0))\n\
+          \  /\n  sum(rate(inference_http_requests_total{path=\"/predict\",rollouts_pod_template_hash=\"\
+          {{args.canary-hash}}\"}[1m]))\n) or (vector(0) / vector(0))\n"
+  - name: p95-latency-seconds
+    interval: 30s
+    failureLimit: 1
+    inconclusiveLimit: 3
+    successCondition: result[0] < 0.5
+    failureCondition: result[0] >= 0.5
+    provider:
+      prometheus:
+        address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
+        query: "histogram_quantile(0.95,\n  sum by (le) (rate(inference_http_request_duration_seconds_bucket{path=\"\
+          /predict\",rollouts_pod_template_hash=\"{{args.canary-hash}}\"}[2m]))\n\
+          ) or (vector(0) / vector(0))\n"
+  - name: p95-latency-vs-stable
+    interval: 30s
+    failureLimit: 1
+    inconclusiveLimit: 3
+    successCondition: result[0] < 0
+    failureCondition: result[0] >= 0
+    provider:
+      prometheus:
+        address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
+        query: "(\n  histogram_quantile(0.95, sum by (le) (rate(inference_http_request_duration_seconds_bucket{path=\"\
+          /predict\",rollouts_pod_template_hash=\"{{args.canary-hash}}\"}[2m])))\n\
+          \  -\n  (1.5 * histogram_quantile(0.95, sum by (le) (rate(inference_http_request_duration_seconds_bucket{path=\"\
+          /predict\",rollouts_pod_template_hash=\"{{args.stable-hash}}\"}[2m]))) +\
+          \ 0.05)\n) or (vector(0) / vector(0))\n"
+  - name: canary-request-rate
+    interval: 30s
+    failureLimit: 3
+    inconclusiveLimit: 3
+    successCondition: result[0] >= 0.2
+    failureCondition: result[0] < 0.2
+    provider:
+      prometheus:
+        address: http://m33-prometheus-server.monitoring.svc.cluster.local:80
+        query: 'sum(rate(inference_http_requests_total{path="/predict",rollouts_pod_template_hash="{{args.canary-hash}}"}[1m]))
+
+          or (vector(0) / vector(0))
+
+          '
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
@@ -78,44 +69,77 @@ metadata:
   namespace: mlops
 spec:
   metrics:
-    # Gọi thẳng Service canary khi canary chưa nhận traffic thật.
-    - name: canary-smoke
-      count: 1
-      provider:
-        job:
-          spec:
-            backoffLimit: 1
-            activeDeadlineSeconds: 180
-            template:
-              spec:
-                restartPolicy: Never
-                nodeSelector:
-                  eks.amazonaws.com/nodegroup: system
-                containers:
-                  - name: smoke
-                    image: curlimages/curl:8.11.1
-                    command:
-                      - sh
-                      - -c
-                      - |
-                        set -eu
-                        base=http://inference-api-canary.mlops.svc.cluster.local:8000
-                        curl -fsS --max-time 10 "$base/readyz" | grep -q '"ready"'
-                        curl -fsS --max-time 10 "$base/model-info" | grep -q '"approval_status":"approved"'
-                        curl -fsS --max-time 10 -X POST "$base/predict" \
-                          -H 'content-type: application/json' \
-                          -d '{"pickup_location_id":1,"dropoff_location_id":2,"pickup_datetime":"2025-04-07T16:00:00Z"}' \
-                          | grep -q '"predicted_duration_minutes"'
-                    resources:
-                      requests:
-                        cpu: 10m
-                        memory: 16Mi
-                      limits:
-                        cpu: 100m
-                        memory: 64Mi
-                    securityContext:
-                      allowPrivilegeEscalation: false
-                      runAsNonRoot: true
-                      runAsUser: 10001
-                      capabilities:
-                        drop: [ALL]
+  - name: canary-smoke
+    count: 1
+    provider:
+      job:
+        spec:
+          backoffLimit: 1
+          activeDeadlineSeconds: 180
+          template:
+            spec:
+              restartPolicy: Never
+              nodeSelector:
+                eks.amazonaws.com/nodegroup: system
+              containers:
+              - name: smoke
+                image: python:3.12.12-alpine
+                command:
+                - python
+                - -c
+                - "import json, math, os\nfrom urllib.request import Request, urlopen\n\
+                  base=\"http://inference-api-canary.mlops.svc.cluster.local:8000\"\
+                  \ndef get(path):\n    with urlopen(base+path, timeout=10) as response:\n\
+                  \        return json.load(response)\nassert get(\"/readyz\").get(\"\
+                  status\") == \"ready\", \"candidate is not Ready\"\ninfo=get(\"\
+                  /model-info\")\nassert info.get(\"approval_status\") == \"approved\"\
+                  , \"candidate not approved\"\nfor key in (\"model_name\", \"model_version\"\
+                  , \"release_id\", \"artifact_checksum\", \"serving_git_sha\", \"\
+                  mlflow_run_id\"):\n    assert info.get(key) == os.environ[\"EXPECTED_\"\
+                  +key.upper()], \"wrong candidate identity: \"+key\nrequest=Request(base+\"\
+                  /predict\", method=\"POST\", headers={\"Content-Type\":\"application/json\"\
+                  }, data=json.dumps({\"pickup_location_id\":1,\"dropoff_location_id\"\
+                  :2,\"pickup_datetime\":\"2025-04-07T16:00:00Z\"}).encode())\nwith\
+                  \ urlopen(request, timeout=10) as response:\n    prediction=json.load(response)\n\
+                  value=prediction.get(\"predicted_duration_minutes\")\nassert isinstance(value,(float,int))\
+                  \ and not isinstance(value,bool) and math.isfinite(value) and 0\
+                  \ < value < 1440, \"invalid prediction\"\nassert prediction.get(\"\
+                  model_version\") == info[\"model_version\"] and prediction.get(\"\
+                  model_name\") == info[\"model_name\"], \"prediction identity mismatch\"\
+                  \nprint(\"Candidate identity, readiness and prediction verified\
+                  \ before traffic\")\n"
+                resources:
+                  requests:
+                    cpu: 10m
+                    memory: 32Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  runAsNonRoot: true
+                  runAsUser: 10001
+                  capabilities:
+                    drop:
+                    - ALL
+                env:
+                - name: EXPECTED_MODEL_NAME
+                  value: '{{args.model-name}}'
+                - name: EXPECTED_MODEL_VERSION
+                  value: '{{args.model-version}}'
+                - name: EXPECTED_RELEASE_ID
+                  value: '{{args.release-id}}'
+                - name: EXPECTED_ARTIFACT_CHECKSUM
+                  value: '{{args.artifact-checksum}}'
+                - name: EXPECTED_SERVING_GIT_SHA
+                  value: '{{args.serving-git-sha}}'
+                - name: EXPECTED_MLFLOW_RUN_ID
+                  value: '{{args.mlflow-run-id}}'
+              automountServiceAccountToken: false
+  args:
+  - name: model-name
+  - name: model-version
+  - name: release-id
+  - name: artifact-checksum
+  - name: serving-git-sha
+  - name: mlflow-run-id

@@ -2,6 +2,8 @@
 
 **Trạng thái: thiết kế đã được triển khai và kiểm chứng trên dev** (xem [phase-04.md](phase-04.md) và [evidence](../evidence/phase-04.md)). Tài liệu này giữ lại kiến trúc, quyết định và kế hoạch ban đầu; một số chi tiết đã đổi theo kết quả kiểm chứng (ví dụ CPU của canary lỗi, gate `error-rate`, biến k6) và được ghi ở mục 10 của evidence.
 
+> **Lưu ý đọc:** Các bảng kế hoạch/checkpoint dưới đây giữ lại quyết định trước kiểm chứng. Tham số runtime lấy từ manifests; status hiện hành đọc phase-04.md và setup.md mục 9. Sau remediation, smoke exact identity, 5xx gate và hai-file/single-commit release thay thế các chi tiết thiết kế ban đầu tương ứng.
+
 ## 1. Mục tiêu và tiêu chí hoàn thành (M4)
 
 Theo [Proposal v1.0.1](../../MLOps_AWS_Implementation_Plan_v1.0.1.md): phát hành model mới theo tỷ lệ traffic tăng dần và tự khôi phục stable khi metric vận hành xấu. Hoàn thành khi chứng minh được:
@@ -136,7 +138,7 @@ Trường hợp Argo selfHeal: sau abort, đừng sửa `Rollout` bằng tay, v�
 - Dashboard Grafana: thêm panel so sánh stable/canary (request rate, lỗi, p95) và đánh dấu weight.
 - `k6-job.yaml.tpl`/`k6.js`: tham số URL đích (ALB DNS) và tốc độ, vẫn nằm trong giới hạn `M33_VUS<=50`, `M33_RATE<=200`.
 
-### 6.5 Release (`scripts/` và `.github/workflows/m32-release.yml`)
+### 6.5 Release (`scripts/` và `.github/workflows/release.yml (tên cũ m32-release.yml trong checkpoint)`)
 - `m32_release.sh`: sau push, chờ Rollout; nhánh abort → revert (§5).
 - `m32_verify.py`: `workload_matches` đọc `Rollout`, kiểm tra stable = image mong đợi, không còn canary, cho phép nhiều ReplicaSet trong lúc rollout.
 - Quyền RBAC cho runner (`deploy/bootstrap/m32-github-release-rbac.yaml`): thêm `rollouts`/`analysisruns` (get/list/watch).
@@ -181,7 +183,7 @@ Người thực hiện đã chọn phương án đề xuất cho các điểm sa
 4. **Canary 10% → 50% → 100%**, mỗi bước pause 2 phút, chỉnh được trong manifest.
 5. Làm trên **nhánh riêng + PR**; Application tạm trỏ nhánh khi thử, không đẩy thẳng vào `main` dùng chung.
 
-## 10. Tiến độ
+## 10. Checkpoint triển khai ban đầu — lịch sử, không phải status hiện hành
 
 | Mốc | Trạng thái |
 | --- | --- |

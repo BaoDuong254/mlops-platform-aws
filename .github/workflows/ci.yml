@@ -1,0 +1,93 @@
+name: Source CI
+'on':
+  push: {}
+  pull_request: {}
+permissions:
+  contents: read
+jobs:
+  infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b
+    - run: uv sync --locked
+    - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+      with:
+        terraform_version: 1.16.6
+        terraform_wrapper: false
+    - uses: azure/setup-kubectl@c0c8b32d33a5244f1e5947304550403b63930415
+      with:
+        version: v1.36.0
+    - run: make ci-infrastructure
+  training:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b
+    - run: uv sync --locked
+    - run: make ci-training
+  serving:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b
+    - run: uv sync --locked
+    - run: make ci-serving
+  gitops:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@4959332f0f014c5280e7eac8b70c90cb574c9f9b
+    - run: uv sync --locked
+    - uses: azure/setup-kubectl@c0c8b32d33a5244f1e5947304550403b63930415
+      with:
+        version: v1.36.0
+    - uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112
+      with:
+        version: v3.22.1
+    - run: make ci-gitops
+  ci:
+    name: Final CI status
+    runs-on: ubuntu-24.04
+    if: ${{ always() }}
+    needs:
+    - infrastructure
+    - training
+    - serving
+    - gitops
+    steps:
+    - env:
+        RESULTS: ${{ toJSON(needs) }}
+      run: 'python3 - <<''PY''
+
+        import json, os
+
+        results = json.loads(os.environ["RESULTS"])
+
+        assert all(job["result"] == "success" for job in results.values()), results
+
+        PY'

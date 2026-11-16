@@ -26,3 +26,5 @@ Local training, Compose MLflow và EKS Spot Job dùng cùng pipeline. Gate chỉ
 
 ## 9. Hạn chế vận hành
 PostgreSQL một replica/PVC không HA. Dump database không chứa model S3 artifacts; giữ cả hai bucket khi phục hồi. Spot có thể thiếu capacity; giữ training Job retry/timeout và kiểm tra NodeClaims. Chỉ restore primary vào DB rỗng, không ghi đè DB đang phục vụ.
+
+> **Sau chuẩn hóa workflows:** source CI là `ci.yml`, cloud training là `train.yml`, approved release là `release.yml`. Serving runtime sau Phase 4 do Rollout quản lý; Deployment là template và có thể 0/0. Tài liệu này giữ phạm vi/lịch sử của Phase tương ứng; setup mới phải đọc thêm setup.md mục 8–9.

@@ -33,6 +33,7 @@ def test_inference_deployment_is_private_digest_pinned_and_scheduled():
         {path.name for path in DEPLOY.iterdir()})
 
 
-def test_cleanup_scope_is_only_serving_objects():
+def test_legacy_mutations_cannot_bypass_gitops():
     script = (ROOT / "scripts/m31.sh").read_text()
-    assert "kubectl -n mlops delete deployment/inference-api service/inference-api --ignore-not-found" in script
+    assert "Legacy Deployment mutation disabled" in script
+    assert "kubectl apply" not in script and "kubectl -n mlops delete" not in script

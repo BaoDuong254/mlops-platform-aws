@@ -9,7 +9,7 @@ Thử model candidate với một phần traffic thật và tự khôi phục st
 AWS Load Balancer Controller, ALB internal, Argo Rollouts, Prometheus AnalysisTemplate, traffic shifting, abort/rollback và công cụ quan sát. Không thay đổi validation gate của Phase 2.
 
 ## 3. Kiến trúc và thành phần
-`Rollout inference-api` dùng `workloadRef` tới `Deployment inference-api` nên release vẫn chỉ sửa `deploy/gitops/inference/deployment.yaml`. Argo Rollouts quản lý ReplicaSet stable/canary, Service `inference-api` (stable) và `inference-api-canary`, và annotation action của Ingress ALB internal (`target-type: ip`). HPA trỏ vào Rollout. Prometheus giữ label `rollouts_pod_template_hash` để tách canary khỏi stable. Terraform thêm IAM/Pod Identity cho LB Controller và nâng node `system` lên 2 node.
+`Rollout inference-api` dùng `workloadRef` tới `Deployment inference-api` nên release giữ Deployment làm nguồn template; source hiện tại sửa thêm expected identity trên Rollout metadata trong cùng một commit. Argo Rollouts quản lý ReplicaSet stable/canary, Service `inference-api` (stable) và `inference-api-canary`, và annotation action của Ingress ALB internal (`target-type: ip`). HPA trỏ vào Rollout. Prometheus giữ label `rollouts_pod_template_hash` để tách canary khỏi stable. Terraform thêm IAM/Pod Identity cho LB Controller và nâng node `system` lên 2 node.
 
 | Bước | Hành động | Cổng |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ AWS Load Balancer Controller, ALB internal, Argo Rollouts, Prometheus AnalysisTe
 | 2 | 50% traffic, pause 2 phút | AnalysisRun nền |
 | 3 | 100% | Rollout `Healthy`, canary thành stable |
 
-Gate (`deploy/gitops/inference/analysis-template.yaml`): tỷ lệ lỗi `< 1%`; p95 `< 0,5 s`; p95 `< 1,5 × p95 stable + 50 ms`; tốc độ request canary `>= 0,2 req/s`. Không có mẫu thì kết quả là inconclusive, không phải đạt.
+Gate (`deploy/gitops/inference/analysis-template.yaml`): tỷ lệ lỗi phục vụ **5xx** `< 1%`; p95 `< 0,5 s`; p95 `< 1,5 × p95 stable + 50 ms`; tốc độ request canary `>= 0,2 req/s`. Không có mẫu thì kết quả là inconclusive, không phải đạt.
 
 ## 4. Đã triển khai thực tế
 Cluster dev chạy LB Controller `v3.6.2`, Argo Rollouts `v1.10.2` và Rollout nêu trên. Đã quan sát: canary khỏe tự lên 100% (T2); canary chậm bị gate p95 từ chối ở 10% và Rollout tự abort (T3); canary không Ready bị chặn trước khi nhận traffic và `Degraded` sau `ProgressDeadlineExceeded` (T4); `git revert` đưa Git và cluster về stable trong khoảng 10 giây. Phân phối đo được: 8,7–9,4% ở bước 10% và 50,7–51,4% ở bước 50%. Release workflow thật (run `42011637577`) build image mới, qua canary khỏe, `champion` ra `already-promoted`, và CIDR EKS được khôi phục. Run thứ hai (`42016449106`) cho k6 gửi request không hợp lệ: gate `error-rate` fail, Rollout abort, workflow `git revert` commit release, Argo CD về stable và `champion` không đổi.
@@ -37,3 +37,8 @@ Tải k6 từ trong cluster vào ALB internal (biến `LOAD_*`, tốc độ cố
 
 ## 9. Hạn chế và lưu ý
 Nhánh từ chối của release workflow mới được thử bằng request không hợp lệ (4xx), chưa bằng lỗi 5xx hay một model lỗi thật, và chỉ một lần. Nhánh smoke fail chưa từng thực thi. Khi tự `git revert`, cluster chỉ về stable sau khi Argo CD hỏi Git (tối đa khoảng 3 phút), trong lúc đó stable phục vụ 100%.
+
+
+## 10. Thay đổi chất lượng sau evidence 05/11
+
+Source hiện hành chuẩn hóa `ci.yml`/`train.yml`/`release.yml`; smoke so exact candidate identity trước traffic, 4xx không còn kích hoạt error gate, rollback xác minh previous stable digest/Ready Pods, alias version được chuẩn hóa int/str. Release vẫn một commit nhưng sửa Deployment và Rollout expected identity. Tùy chọn CPU fault riêng candidate mặc định tắt dành cho E2E tiếp theo. Các thay đổi này có regression tests local/CI, chưa được coi là đã chạy lại toàn bộ bộ thí nghiệm AWS Phase 1–4. Các số liệu/422 rollback trong evidence là lịch sử của source cũ.

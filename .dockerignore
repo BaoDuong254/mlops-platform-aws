@@ -8,3 +8,13 @@ backups
 .env
 **/__pycache__
 **/.terraform
+
+# Internal reports, IDE state and Terraform plans must not enter build context.
+final-remediation
+docs/_local
+.idea
+.pytest_cache
+PHASE_4_IMPLEMENTATION_REPORT.md
+**/*.tfstate*
+**/*.tfplan
+**/tfplan

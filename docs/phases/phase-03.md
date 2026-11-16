@@ -26,3 +26,5 @@ Serving lần đầu cần `make serving-export`/`serving-build`/`serving-push` 
 
 ## 9. Hạn chế vận hành
 Release runner phụ thuộc EKS public API `/32` tạm thời; cleanup bị gián đoạn cần recovery CIDR có kiểm soát. Image-baked model cần release mới khi model mới được duyệt. Prometheus metrics ephemeral 24 giờ; Grafana `Recreate` có thể gián đoạn UI ngắn khi upgrade. Bài k6 chứng minh scaling/availability, chưa chứng minh throughput tăng sau scale-out.
+
+> **Sau chuẩn hóa workflows:** source CI là `ci.yml`, cloud training là `train.yml`, approved release là `release.yml`. Serving runtime sau Phase 4 do Rollout quản lý; Deployment là template và có thể 0/0. Tài liệu này giữ phạm vi/lịch sử của Phase tương ứng; setup mới phải đọc thêm setup.md mục 8–9.

@@ -113,7 +113,7 @@ def wait_for_outcome(expected: dict, commit: str, timeout: int = 1800) -> str:
     raise TimeoutError(f"Canary did not finish promotion or abort in time: {last_error}")
 
 
-def wait_for_reverted(commit: str, timeout: int = 900) -> None:
+def wait_for_reverted(commit: str, previous: dict, timeout: int = 900) -> None:
     """After a revert commit, Argo CD must be Synced/Healthy at it and the Rollout stable again."""
     deadline = time.monotonic() + timeout
     last_error = None
@@ -121,7 +121,7 @@ def wait_for_reverted(commit: str, timeout: int = 900) -> None:
         try:
             rollout = command_json("-n", "mlops", "get", "rollout.argoproj.io", "inference-api")
             status = rollout.get("status", {})
-            if (application_matches(commit) and status.get("phase") == "Healthy" and
+            if (application_matches(commit) and live_state(previous) == "promoted" and status.get("phase") == "Healthy" and
                     status.get("currentPodHash") == status.get("stableRS")):
                 return
         except (subprocess.CalledProcessError, KeyError, ValueError) as error:
@@ -198,14 +198,14 @@ def promote(client: MlflowClient, expected: dict, commit: str) -> str:
         if error.error_code not in {"INVALID_PARAMETER_VALUE", "RESOURCE_DOES_NOT_EXIST"} or "alias" not in str(error).lower():
             raise
         current = None
-    if current is not None and current.version == expected["model_version"] and current.run_id == expected["mlflow_run_id"]:
+    if current is not None and str(current.version) == expected["model_version"] and current.run_id == expected["mlflow_run_id"]:
         result = "already-promoted"
     else:
         assert_current_release(expected, commit)
         client.set_registered_model_alias(expected["model_name"], "champion", expected["model_version"])
         result = "promoted"
     confirmed = client.get_model_version_by_alias(expected["model_name"], "champion")
-    if confirmed.version != expected["model_version"] or confirmed.run_id != expected["mlflow_run_id"]:
+    if str(confirmed.version) != expected["model_version"] or confirmed.run_id != expected["mlflow_run_id"]:
         raise RuntimeError("Champion alias read-back differs from verified release")
     assert_current_release(expected, commit)
     return result
@@ -221,12 +221,15 @@ def main() -> None:
                         help="Wait for Argo and the new Pod before opening an inference port-forward")
     parser.add_argument("--wait-outcome", action="store_true",
                         help="Wait for the canary to be promoted (exit 0) or aborted (exit 3)")
+    parser.add_argument("--previous", type=Path, help="Verified stable snapshot captured before the release")
     parser.add_argument("--wait-reverted", action="store_true",
                         help="Wait until --commit (a revert) is live and the Rollout is stable again")
     args = parser.parse_args()
     expected = json.loads(args.expected.read_text(encoding="utf-8"))
     if args.wait_reverted:
-        wait_for_reverted(args.commit)
+        if args.previous is None:
+            parser.error("--wait-reverted requires --previous")
+        wait_for_reverted(args.commit, json.loads(args.previous.read_text()))
         print(json.dumps({"gitops_commit": args.commit, "rollback": "stable-restored"}, sort_keys=True))
         return
     if args.wait_outcome:

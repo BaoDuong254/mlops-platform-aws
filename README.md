@@ -13,7 +13,7 @@ flowchart LR
     MLFLOW --> MODEL["S3 model artifacts"]
     MLFLOW -->|approved version| CI["GitHub Actions + AWS OIDC"]
     CI --> ECR["ECR image chứa model"]
-    CI -->|một digest commit| GIT["GitOps repository"]
+    CI -->|một release commit| GIT["GitOps repository"]
     GIT --> ARGO["Argo CD"]
     ARGO --> API["FastAPI trên EKS On-Demand"]
     ECR --> API
@@ -22,7 +22,7 @@ flowchart LR
     PROM --> GRAF["Grafana"]
 ```
 
-Training dùng tháng 2025-01/02 cho train, 2025-03 validation và 2025-04 test. Validation gate chỉ chấp thuận candidate đủ điều kiện. Release workflow nhận **model name/version rõ ràng**, trực tiếp lấy approved model từ cloud Registry, kiểm tra bundle, build/push image và commit ECR digest. Argo CD tự triển khai; runner kiểm chứng API rồi mới xác nhận alias `champion`. Dispatch release **không tự train**. Image chứa model và feature contract nên request inference không cần gọi MLflow/S3.
+Training dùng tháng 2025-01/02 cho train, 2025-03 validation và 2025-04 test. Validation gate chỉ chấp thuận candidate đủ điều kiện. Release workflow nhận **model name/version rõ ràng**, trực tiếp lấy approved model từ cloud Registry, kiểm tra bundle, build/push image và commit ECR digest. Argo CD tự triển khai; runner kiểm chứng API rồi mới xác nhận alias `champion`. Dispatch release **không tự train**. Cloud training dispatch riêng bằng `make train-run TRAIN_CONFIG=configs/training.yaml`. Image chứa model và feature contract nên request inference không cần gọi MLflow/S3.
 
 Terraform tách ba state: bootstrap state bucket (state local phải sao lưu riêng), persistent S3/ECR, và platform VPC/EKS/IAM/add-ons. Xóa platform không đồng nghĩa xóa persistent storage; PostgreSQL PVC cần backup trước khi teardown.
 
@@ -46,6 +46,20 @@ tests/              unit/integration tests
 docs/               setup, operations, kiến trúc, tài liệu năm Phase, evidence
 docs/_local/         ghi chú phát triển local, Git-ignored; phải backup riêng
 ```
+
+## Workflows chuẩn hóa
+
+Repository có ba workflows độc lập:
+
+| Workflow | Trigger và trách nhiệm |
+| --- | --- |
+| `ci.yml` | Push/PR: bốn jobs Infrastructure, Training, Serving, GitOps; job Final CI status chỉ xanh khi tất cả thành công. PR CI không nhận AWS credentials. Tests tạo synthetic artifacts trong tmp, không skip khi máy chưa train. |
+| `train.yml` | Dispatch từ `main`: dedicated OIDC role → build/push training image theo digest → EKS Spot Job → validation gate → kiểm tra artifacts/metrics/Registry → báo approved/rejected. Không release hoặc đổi champion. |
+| `release.yml` | Dispatch từ `main` với model name/version rõ ràng: export approved model → bundle/image digest → một commit Deployment + Rollout smoke identity → canary → verify → champion. Candidate bị từ chối thì guarded Git revert. |
+
+Training và release dùng chung concurrency group theo cluster để serialize CIDR changes; không hủy run đang chạy. Các run đang pending có thể bị GitHub thay thế bởi run pending mới hơn, không phải FIFO queue. Repository variables, IAM/RBAC setup và các giới hạn nằm ở [setup](docs/setup.md#9-github-actions-citrainingrelease).
+
+Source remediation đã được kiểm tra local/CI; các thay đổi mới về smoke identity, 5xx gate và cloud training chưa được tuyên bố đã kiểm chứng AWS end-to-end. Evidence 05/11 giữ nguyên ý nghĩa lịch sử: release rollback khi đó dùng 422; source hiện tại không dùng 4xx để reject candidate.
 
 ## Điều kiện trước khi bắt đầu
 
@@ -79,6 +93,9 @@ make tf-platform-apply
 aws eks update-kubeconfig --profile "$AWS_PROFILE" --region "$AWS_REGION" --name mlops-aws-dev
 make k8s-bootstrap
 make k8s-verify
+# Cài trước khi Argo CD đọc serving GitOps path hiện tại có Rollout/AnalysisTemplate.
+make canary-addons-deploy
+make canary-addons-verify
 ```
 
 Tên cluster `mlops-aws-dev` ứng với `environment=dev`. Đổi region/environment đòi hỏi review backend, AZ, manifests và scripts; đổi mỗi `TF_VAR_aws_region` là chưa đủ. Sao lưu `infra/terraform/bootstrap/terraform.tfstate` an toàn ngoài Git.
@@ -118,7 +135,7 @@ make release-run M31_MODEL_NAME=nyc-taxi-trip-duration M31_MODEL_VERSION=1
 make release-gitops-verify
 ```
 
-Chỉ dispatch khi GitHub OIDC role, repository identity, EKS Access Entry/RBAC, runner network và branch protection đã đúng. Workflow hiện vẫn gắn với identity dev gốc; xem setup trước khi dùng trên fork/account mới.
+Chỉ dispatch khi GitHub OIDC role, repository identity, EKS Access Entry/RBAC, runner network và branch protection đã đúng. Workflow cần repository variables và IAM subject đúng identity; xem setup trước khi dùng trên fork/account mới.
 
 HPA thuộc GitOps. Sau khi Argo CD Application đã có `ignoreDifferences` cho `spec.replicas` và Metrics Server add-on được Terraform áp dụng, cài monitoring:
 
@@ -179,4 +196,4 @@ Training artifact local được ghi nhận có validation MAE **3,8372 phút** 
 
 EKS control plane, NAT Gateway/EIP, EC2 system/Spot/On-Demand, EBS PVC, S3/ECR storage/requests, logs và data transfer có thể tính phí. `make cloud-backup` và `make cloud-restore-check BACKUP_KEY=...` kiểm tra dữ liệu trước khi dọn. `make monitoring-cleanup` gỡ monitoring; **`make cloud-teardown` backup rồi xóa cả namespace `mlops`, bao gồm inference đang chạy** nên phải gỡ Argo CD Application/serving có kiểm soát trước. `make tf-platform-down` yêu cầu xác nhận và chỉ destroy platform state sau cleanup. Không xóa persistent S3/ECR, bootstrap state hoặc training/model artifacts khi chưa có bản sao. Xem thứ tự an toàn trong [operations](docs/operations.md). **Phase 4:** xóa Application không xóa Ingress/ALB; gỡ Ingress và chờ ALB biến mất trước `make tf-platform-down` (lệnh đầy đủ và kiểm tra sau khi xóa ở [setup mục 8](docs/setup.md#8-canary-và-rollback-phase-4)).
 
-Giới hạn: một NAT và PostgreSQL một replica/PVC chưa HA; một số dataset cache cũ có `source_verified=false`; Prometheus giữ metrics 24 giờ trên `emptyDir`; load test chứng minh scale replicas nhưng chưa chứng minh throughput tăng nhờ các Pod mới; release trên account/repo khác cần migration cấu hình identity và kiểm thử lại. Phase 4: ALB và node `system` thứ hai tính phí, gỡ Ingress ALB trước khi hạ VPC, và nhánh từ chối của release workflow mới được thử bằng request không hợp lệ (4xx), chưa bằng lỗi 5xx hay model lỗi thật. Phase 5 chưa triển khai.
+Giới hạn: một NAT và PostgreSQL một replica/PVC chưa HA; một số dataset cache cũ có `source_verified=false`; Prometheus giữ metrics 24 giờ trên `emptyDir`; load test chứng minh scale replicas nhưng chưa chứng minh throughput tăng nhờ các Pod mới; release trên account/repo khác cần migration cấu hình identity và kiểm thử lại. Phase 4: ALB và node `system` thứ hai tính phí, gỡ Ingress ALB trước khi hạ VPC, và các nhánh cloud mới cần kiểm thử thống nhất ở E2E. Lịch sử rollback 422 không còn là cách thử server-error gate hiện tại. Phase 5 chưa triển khai.

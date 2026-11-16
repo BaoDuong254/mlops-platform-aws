@@ -20,7 +20,7 @@ def main() -> None:
             raise
         print(json.dumps({"model_name": args.model_name, "champion_version": None}))
         return
-    print(json.dumps({"model_name": args.model_name, "champion_version": version.version,
+    print(json.dumps({"model_name": args.model_name, "champion_version": str(version.version),
                       "mlflow_run_id": version.run_id, "validation_status": version.tags.get("validation_status")}))
 
 

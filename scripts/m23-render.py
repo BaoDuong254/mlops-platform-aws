@@ -9,7 +9,7 @@ from string import Template
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: m23-render.py TEMPLATE")
-    print(Template(Path(sys.argv[1]).read_text(encoding="utf-8")).substitute(os.environ), end="")
+    print(Template(Path(sys.argv[1]).read_text(encoding="utf-8")).substitute({"TRAINING_CONFIG": "configs/training.yaml", **os.environ}), end="")
     return 0
 
 

@@ -27,12 +27,12 @@ help:
 	  '  k8s-bootstrap|verify|smoke       Helm Karpenter/Argo CD; smoke may start a paid EC2 node.' \
 	  '' \
 	  'Data and model (dataset download and training may use network/compute):' \
-	  '  training-setup|test, data-download, train-local' \
+	  '  training-setup|test, data-download, train-local; train-run dispatches cloud training' \
 	  '  mlflow-up|verify|train|import-run|validate|backup|restore-check|down  Local Compose.' \
 	  '  cloud-images-build|push, cloud-data-sync, cloud-deploy, cloud-train  EKS/Spot/S3/ECR.' \
 	  '  cloud-verify|backup|restore-check  Read-only check or S3 backup as named.' \
 	  '' \
-	  'Serving and release (GitOps owns the live inference Deployment):' \
+	  'Serving and release (GitOps owns the inference template and Rollout):' \
 	  '  serving-export|build|verify      Local release bundle/image; requires approved Registry model.' \
 	  '  serving-push                    Push immutable image to ECR; does not deploy.' \
 	  '  serving-port-forward, serving-manifest-check  Inspect running service/manifest.' \
@@ -41,7 +41,7 @@ help:
 	  'Monitoring (deploy/cleanup change Kubernetes resources; load-test costs compute):' \
 	  '  monitoring-test|deploy|verify|load-test|cleanup' \
 	  '' \
-	  'Canary observation (load via monitoring-load-test M33_TARGET=alb [M33_PAYLOAD=invalid]; split reads Prometheus):' \
+	  'Canary observation (load via monitoring-load-test M33_TARGET=alb with valid requests; split reads Prometheus):' \
 	  '  canary-status                   Rollout, AnalysisRuns and ALB hostname.' \
 	  '  canary-split M42_WINDOW=2m      Request share per ReplicaSet (stable vs canary).' \
 	  '' \
@@ -93,7 +93,7 @@ m32-promotion-verify:
 	$(UV) run --locked python scripts/m32_champion_info.py --tracking-uri "$(M32_CLOUD_MLFLOW_URI)" --model-name "$(M31_MODEL_NAME)"
 
 m32-release:
-	gh workflow run m32-release.yml --ref main -f model_name="$(M31_MODEL_NAME)" -f model_version="$(M31_MODEL_VERSION)"
+	gh workflow run release.yml --ref main -f model_name="$(M31_MODEL_NAME)" -f model_version="$(M31_MODEL_VERSION)"
 
 .PHONY: m42-test m42-status m42-split canary-status canary-split
 M42_WINDOW ?= 2m
@@ -331,6 +331,7 @@ tf-platform-down:
 	@printf 'Type "destroy mlops-aws-dev" to destroy ONLY the platform stack: '; \
 	read -r answer; \
 	test "$$answer" = "destroy mlops-aws-dev" || { echo "Cancelled."; exit 1; }; \
+	$(MAKE) canary-platform-cleanup || exit $$?; \
 	$(MAKE) m23-teardown || exit $$?; \
 	$(MAKE) k8s-cleanup || exit $$?; \
 	$(TERRAFORM) -chdir=$(PLATFORM_DIR) destroy
@@ -382,3 +383,20 @@ monitoring-deploy: m33-deploy
 monitoring-verify: m33-verify
 monitoring-load-test: m33-load-test
 monitoring-cleanup: m33-cleanup
+
+# Module boundaries used by credential-free source CI.
+.PHONY: ci-infrastructure ci-training ci-serving ci-gitops workflows-check train-run canary-platform-cleanup
+ci-infrastructure:
+	bash scripts/source_checks.sh infrastructure
+ci-training:
+	$(UV) run --locked pytest -q tests/unit/test_features.py tests/unit/test_gate.py tests/unit/test_m23_cloud.py tests/integration/test_training_pipeline.py tests/integration/test_mlflow_tracking.py tests/unit/test_training_workflow.py
+ci-serving:
+	$(UV) run --locked pytest -q tests/unit/test_inference.py tests/integration/test_inference_export.py tests/integration/test_m32_bundle.py
+ci-gitops:
+	bash scripts/source_checks.sh gitops
+workflows-check:
+	bash scripts/workflow_lint.sh
+train-run:
+	gh workflow run train.yml --ref main -f training_config="$(TRAIN_CONFIG)"
+canary-platform-cleanup:
+	bash scripts/canary_cleanup.sh

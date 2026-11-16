@@ -23,7 +23,7 @@ def file_hash(path: Path) -> str:
 
 def inventory(root: Path) -> dict[str, str]:
     return {str(path.relative_to(root)): file_hash(path) for path in sorted(root.rglob("*"))
-            if path.is_file() and path.name != "release.json"}
+            if path.is_file() and path != root / "release.json"}
 
 
 def validate_release(root: Path) -> tuple[dict, LoadedModel]:

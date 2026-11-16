@@ -61,7 +61,7 @@ def restore_temp(dump: Path) -> dict:
     name = f"mlops_restore_check_{os.getpid()}"
     command("createdb", "-h", os.environ["PGHOST"], "-U", os.environ["PGUSER"], name)
     try:
-        pg("pg_restore", "--no-owner", "--no-acl", str(dump), database=name)
+        pg("pg_restore", "--single-transaction", "--exit-on-error", "--no-owner", "--no-acl", str(dump), database=name)
         return metadata(name)
     finally:
         command("dropdb", "-h", os.environ["PGHOST"], "-U", os.environ["PGUSER"], "--if-exists", name)
@@ -111,7 +111,7 @@ def restore_primary(dump: Path, expected: dict) -> None:
     table_count = int(pg("psql", "-At", "-c", "select count(*) from information_schema.tables where table_schema='public'"))
     if table_count:
         raise ValueError("Primary database is not empty; refusing to overwrite Registry metadata")
-    pg("pg_restore", "--no-owner", "--no-acl", str(dump))
+    pg("pg_restore", "--single-transaction", "--exit-on-error", "--no-owner", "--no-acl", str(dump))
     if metadata(database) != expected:
         raise ValueError("Restored primary database metadata differs from backup manifest")
 

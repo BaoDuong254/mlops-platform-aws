@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import os
 from pathlib import Path
 
 import yaml
@@ -13,7 +14,7 @@ from inference.bundle import validate_release
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOYMENT = ROOT / "deploy/gitops/inference/deployment.yaml"
-ECR = "160616607747.dkr.ecr.ap-southeast-1.amazonaws.com/mlops-aws-inference-dev"
+ECR = os.getenv("INFERENCE_ECR_REPOSITORY") or yaml.safe_load(DEPLOYMENT.read_text())["spec"]["template"]["spec"]["containers"][0]["image"].split("@", 1)[0]
 
 
 def prepare_bundle(bundle: Path, release_id: str, serving_git_sha: str) -> dict:
@@ -32,7 +33,7 @@ def prepare_bundle(bundle: Path, release_id: str, serving_git_sha: str) -> dict:
     return metadata
 
 
-def update_manifest(bundle: Path, image: str, deployment_path: Path = DEPLOYMENT) -> dict:
+def update_manifest(bundle: Path, image: str, deployment_path: Path = DEPLOYMENT, candidate_cpu: str = "off") -> dict:
     if not re.fullmatch(re.escape(ECR) + r"@sha256:[0-9a-f]{64}", image):
         raise ValueError("Serving image must use the inference ECR digest")
     metadata, _ = validate_release(bundle)
@@ -51,7 +52,29 @@ def update_manifest(bundle: Path, image: str, deployment_path: Path = DEPLOYMENT
     annotations["mlops.aws/mlflow-run-id"] = metadata["mlflow_run_id"]
     annotations["mlops.aws/serving-git-sha"] = metadata["serving_git_sha"]
     template["spec"]["containers"][0]["image"] = image
+    if candidate_cpu not in {"off", "100m"}:
+        raise ValueError("Candidate CPU test must be off or 100m")
+    if candidate_cpu != "off":
+        # Only the new workloadRef template changes; stable ReplicaSet resources stay intact.
+        resources = template["spec"]["containers"][0]["resources"]
+        annotations["mlops.aws/test-original-cpu-request"] = str(resources["requests"]["cpu"])
+        annotations["mlops.aws/test-original-cpu-limit"] = str(resources["limits"]["cpu"])
+        resources["requests"]["cpu"] = candidate_cpu
+        resources["limits"]["cpu"] = candidate_cpu
+    elif "mlops.aws/test-original-cpu-request" in annotations:
+        resources = template["spec"]["containers"][0]["resources"]
+        resources["requests"]["cpu"] = annotations.pop("mlops.aws/test-original-cpu-request")
+        resources["limits"]["cpu"] = annotations.pop("mlops.aws/test-original-cpu-limit")
+
     deployment_path.write_text(yaml.safe_dump(deployment, sort_keys=False), encoding="utf-8")
+    if deployment_path == DEPLOYMENT:
+        rollout_path = deployment_path.with_name("rollout.yaml")
+        rollout = yaml.safe_load(rollout_path.read_text())
+        annotations = rollout["metadata"].setdefault("annotations", {})
+        for key in ("model_name", "model_version", "release_id", "artifact_checksum", "serving_git_sha", "mlflow_run_id"):
+            annotations["mlops.aws/" + key.replace("_", "-")] = metadata[key]
+        rollout_path.write_text(yaml.safe_dump(rollout, sort_keys=False), encoding="utf-8")
+
     return {key: metadata[key] for key in ("release_id", "model_name", "model_version",
                                            "mlflow_run_id", "source_run_id", "git_sha",
                                            "serving_git_sha", "artifact_checksum")} | {"image": image}
@@ -67,12 +90,13 @@ def main() -> None:
     render = sub.add_parser("render")
     render.add_argument("--bundle", type=Path, required=True)
     render.add_argument("--image", required=True)
+    render.add_argument("--candidate-cpu", choices=("off", "100m"), default="off")
     render.add_argument("--expected-output", type=Path, required=True)
     args = parser.parse_args()
     if args.mode == "prepare":
         result = prepare_bundle(args.bundle, args.release_id, args.serving_git_sha)
     else:
-        result = update_manifest(args.bundle, args.image)
+        result = update_manifest(args.bundle, args.image, candidate_cpu=args.candidate_cpu)
         args.expected_output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
                                         encoding="utf-8")
     print(json.dumps(result, sort_keys=True))

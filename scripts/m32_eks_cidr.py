@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-CLUSTER = "mlops-aws-dev"
+CLUSTER = os.getenv("EKS_CLUSTER_NAME", "mlops-aws-dev")
 TIMEOUT_SECONDS = 1200
 
 
@@ -108,7 +108,7 @@ def open_access(path: Path) -> None:
     before = wait_active()
     if not before["public"] or not before["private"] or not before["cidrs"]:
         raise ValueError("Expected both EKS endpoints enabled and a restricted public CIDR list")
-    if "0.0.0.0/0" in before["cidrs"] or "::/0" in before["cidrs"]:
+    if any(ipaddress.ip_network(cidr).version != 4 or ipaddress.ip_network(cidr).prefixlen != 32 for cidr in before["cidrs"]):
         raise ValueError("Refusing unrestricted EKS public API access")
     runner = runner_cidr()
     temporary = before["cidrs"] if runner in before["cidrs"] else [*before["cidrs"], runner]

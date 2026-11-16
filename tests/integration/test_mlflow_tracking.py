@@ -106,3 +106,22 @@ def test_rejected_candidate_is_still_tracked_without_model_version(tmp_path, mon
     client = MlflowClient(tracking_uri=tracking_uri)
     assert client.get_run(result["mlflow_run_id"]).data.tags["validation_status"] == "rejected"
     assert list(client.search_model_versions("name = 'taxi-rejected-model'")) == []
+
+
+def test_new_better_candidate_creates_second_registry_version_on_same_evaluation(tmp_path, monkeypatch):
+    """Real local Registry versions; no fake cloud versions or changed validation gate."""
+    from dataclasses import replace
+    monkeypatch.chdir(tmp_path)
+    better_run = _training_run(tmp_path)
+    config = load_config(tmp_path / 'training.yaml')
+    weak_run = train(replace(config, model_params={**config.model_params, 'n_estimators': 1}))
+    uri = f'sqlite:///{tmp_path / "second-version.db"}'
+    tracking = TrackingConfig('candidate-regression', 'candidate-regression-model', 0.01)
+    first = import_run(weak_run, uri, tracking)
+    assert first['model_version'] == '1'
+    client = MlflowClient(tracking_uri=uri)
+    client.set_registered_model_alias(tracking.registered_model_name, 'champion', '1')
+    second = import_run(better_run, uri, tracking)
+    assert second['validation_status'] == 'approved' and second['model_version'] == '2'
+    assert second['candidate_validation_mae_minutes'] <= second['reference_validation_mae_minutes'] * 0.99
+    assert str(client.get_model_version_by_alias(tracking.registered_model_name, 'champion').version) == '1'

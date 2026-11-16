@@ -5,12 +5,17 @@ cd "$(dirname "$0")/.."
 mode="${1:?Use build, push, deploy, verify or cleanup}"
 release_dir="${M31_RELEASE_DIR:-artifacts/releases/nyc-taxi-trip-duration-v1}"
 manifest="deploy/gitops/inference/deployment.yaml"
+if [[ "$mode" == deploy || "$mode" == cleanup ]]; then
+  echo 'Legacy Deployment mutation disabled: use Argo CD/release or ordered canary-platform-cleanup.' >&2
+  exit 2
+fi
 
 image_tag() {
-  local checksum code_hash
+  local checksum code_hash version
   checksum="$(.venv/bin/python -c 'import json,sys; print(json.load(open(sys.argv[1]))["artifact_checksum"][:16])' "$release_dir/release.json")"
   code_hash="$(sha256sum pyproject.toml uv.lock deploy/inference/Dockerfile src/inference/*.py src/training/*.py | sha256sum | cut -c1-12)"
-  printf 'm31-v1-%s-%s\n' "$checksum" "$code_hash"
+  version="$(.venv/bin/python -c 'import json,sys; print(json.load(open(sys.argv[1]))["model_version"])' "$release_dir/release.json")"
+  printf 'm31-v%s-%s-%s\n' "$version" "$checksum" "$code_hash"
 }
 
 case "$mode" in
@@ -20,7 +25,7 @@ from pathlib import Path
 from inference.bundle import validate_release
 import sys
 metadata, _ = validate_release(Path(sys.argv[1]))
-assert metadata["model_name"] == "nyc-taxi-trip-duration" and metadata["model_version"] == "1"
+assert metadata["model_version"].isdecimal() and int(metadata["model_version"]) > 0
 print(f"Validated {metadata['model_name']} v{metadata['model_version']} ({metadata['artifact_checksum']})")
 PY
     tag="$(image_tag)"
@@ -30,7 +35,7 @@ PY
   push)
     tag="${M31_IMAGE_TAG:-$(image_tag)}"
     checksum="$(.venv/bin/python -c 'import json,sys; print(json.load(open(sys.argv[1]))["artifact_checksum"][:16])' "$release_dir/release.json")"
-    if [[ ! "$tag" =~ ^m31-v1-${checksum}-[0-9a-f]{12}$ ]]; then
+    if [[ ! "$tag" =~ ^m31-v[1-9][0-9]*-${checksum}-[0-9a-f]{12}$ ]]; then
       echo "Image tag $tag does not match this release bundle checksum $checksum" >&2
       exit 1
     fi
@@ -48,18 +53,9 @@ PY
     printf 'Immutable image: %s@%s\n' "$repository" "$digest"
     printf 'Pin this digest in %s before deploying.\n' "$manifest"
     ;;
-  deploy)
-    .venv/bin/python scripts/m31-validate-manifest.py
-    kubectl apply -k deploy/gitops/inference
-    kubectl -n mlops rollout status deployment/inference-api --timeout=10m
-    ;;
   verify)
     .venv/bin/python scripts/m31-validate-manifest.py
-    kubectl -n mlops rollout status deployment/inference-api --timeout=10m
-    kubectl -n mlops get deployment/inference-api service/inference-api -o wide
-    ;;
-  cleanup)
-    kubectl -n mlops delete deployment/inference-api service/inference-api --ignore-not-found
+    bash scripts/m42.sh status
     ;;
   *) echo "Use build, push, deploy, verify or cleanup" >&2; exit 2 ;;
 esac
