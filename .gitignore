@@ -44,3 +44,6 @@
 
 # Internal final audit and handoff (never publish to GitHub).
 /final-remediation/
+
+# Internal end-to-end source evidence.
+/final-e2e-evidence/
