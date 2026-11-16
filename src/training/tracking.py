@@ -264,6 +264,11 @@ def import_run(run_dir: Path, tracking_uri: str, config: TrackingConfig) -> dict
     if duplicate:
         if (duplicate.tags or {}).get("source_manifest_sha256") != source_hash:
             raise ValueError("A model version already uses this source run ID with different manifest content")
+        approved = _approved_version(duplicate, required=True)
+        if approved.run_id != run_id or approved.dataset_key != validation_dataset_key(manifest, schema):
+            raise ValueError("Registered duplicate provenance differs from this training run")
+        if client.get_run(run_id).data.tags.get("validation_status") != "approved":
+            raise ValueError("Registered duplicate and tracking approval disagree")
         return {"mlflow_run_id": run_id, "validation_status": "approved", "model_version": str(duplicate.version), "already_registered": True}
 
     try:

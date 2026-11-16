@@ -48,6 +48,10 @@ spec:
       - name: inference-api
         image: 160616607747.dkr.ecr.ap-southeast-1.amazonaws.com/mlops-aws-inference-dev@sha256:345b243372173a5f680237b4e44964be3d6fc21fa92ccae24ae146ef0b89fb43
         imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command: [python, -c, "import time; time.sleep(5)"]
         ports:
         - name: http
           containerPort: 8000

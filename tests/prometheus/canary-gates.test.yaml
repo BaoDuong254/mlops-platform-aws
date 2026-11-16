@@ -1,0 +1,49 @@
+rule_files: [/checks/rules.yaml]
+evaluation_interval: 15s
+tests:
+  - name: healthy-with-no-error-series
+    interval: 15s
+    input_series:
+      - series: 'inference_http_requests_total{path="/predict",rollouts_pod_template_hash="canary",status="200"}'
+        values: '0+60x20'
+    promql_expr_test:
+      - expr: canary_error_rate
+        eval_time: 2m
+        exp_samples: [{labels: 'canary_error_rate{}', value: 0}]
+      - expr: canary_request_rate >= bool 0.2
+        eval_time: 2m
+        exp_samples: [{labels: '{}', value: 1}]
+  - name: client-errors-do-not-reject-server
+    interval: 15s
+    input_series:
+      - series: 'inference_http_requests_total{path="/predict",rollouts_pod_template_hash="canary",status="422"}'
+        values: '0+60x20'
+      - series: 'inference_http_errors_total{path="/predict",rollouts_pod_template_hash="canary",status="422"}'
+        values: '0+60x20'
+    promql_expr_test:
+      - expr: canary_error_rate
+        eval_time: 2m
+        exp_samples: [{labels: 'canary_error_rate{}', value: 0}]
+  - name: server-errors-reject-candidate
+    interval: 15s
+    input_series:
+      - series: 'inference_http_requests_total{path="/predict",rollouts_pod_template_hash="canary",status="200"}'
+        values: '0+30x20'
+      - series: 'inference_http_requests_total{path="/predict",rollouts_pod_template_hash="canary",status="500"}'
+        values: '0+30x20'
+      - series: 'inference_http_errors_total{path="/predict",rollouts_pod_template_hash="canary",status="500"}'
+        values: '0+30x20'
+    promql_expr_test:
+      - expr: 'canary_error_rate >= bool 0.01'
+        eval_time: 2m
+        exp_samples: [{labels: '{}', value: 1}]
+  - name: missing-traffic-stays-unknown
+    interval: 15s
+    input_series: []
+    promql_expr_test:
+      - expr: 'canary_error_rate != bool canary_error_rate'
+        eval_time: 2m
+        exp_samples: [{labels: '{}', value: 1}]
+      - expr: 'canary_request_rate != bool canary_request_rate'
+        eval_time: 2m
+        exp_samples: [{labels: '{}', value: 1}]

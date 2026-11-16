@@ -28,7 +28,7 @@ Persistent S3 bucket names lấy account ID tự động, nhưng **toàn bộ pr
 | Vị trí | Giá trị đang pin | Việc cần làm |
 | --- | --- | --- |
 | `infra/terraform/platform/m32_release_iam.tf` | GitHub owner/repo và immutable owner/repo IDs | Dùng identity repository thực, kiểm tra GitHub OIDC subject; provider OIDC là data source và phải tồn tại trong account |
-| `.github/workflows/m32-release.yml` | Repository IDs, IAM role ARN, region | Khớp trust policy, role ARN từ Terraform output và branch `main` |
+| `.github/workflows/release.yml` | Repository IDs, IAM role ARN, region | Khớp trust policy, role ARN từ Terraform output và branch `main` |
 | `scripts/m32_release.sh`, `scripts/m32_gitops.py`, `scripts/m31-validate-manifest.py` | EKS name, ECR account/repository URI | Thay bằng cluster/repository thực; chạy unit tests sau sửa |
 | `scripts/m32_eks_cidr.py`, `scripts/k8s-common.sh`, một số bootstrap manifests | Cluster/NodeClass `mlops-aws-dev` | Giữ nếu cũng dùng `environment=dev`; nếu đổi tên phải update cùng nhau |
 | `deploy/argocd/inference-application-*.yaml` | `repoURL` của tác giả | Trỏ đến repository có thể đọc được bởi Argo CD |
@@ -123,6 +123,8 @@ make serving-push
 Thay image trong `deploy/gitops/inference/deployment.yaml` bằng ECR URI@sha256 do push in ra. Đảm bảo label version đúng, chạy `make serving-manifest-check` và `kubectl kustomize deploy/gitops/inference`. Push repository của bạn theo quy trình Git riêng trước khi Argo CD đọc nó. Sau đó review và áp dụng Application manual:
 
 ```bash
+make canary-addons-deploy
+make canary-addons-verify
 kubectl apply -f deploy/argocd/inference-application-manual.yaml
 kubectl -n argocd get application inference-api -o wide
 kubectl -n mlops get deployment,service inference-api
@@ -172,7 +174,7 @@ Chuẩn bị mỗi terminal mới: `export AWS_PROFILE=mlops-dev AWS_REGION=ap-s
    aws eks update-nodegroup-config --cluster-name mlops-aws-dev --nodegroup-name system --scaling-config minSize=1,maxSize=2,desiredSize=2
    ```
 2. **Add-on:** `make canary-addons-deploy` rồi `make canary-addons-verify` (LB Controller 3.6.2, Argo Rollouts 2.43.9). Phải xong trước khi manifest canary được Argo CD đọc; thiếu CRD `Rollout`/`AnalysisTemplate` hoặc IngressClass `alb` thì sync lỗi.
-3. **RBAC cho runner release:** `kubectl apply -f deploy/bootstrap/m32-github-release-rbac.yaml`. Trên cluster mới Role chưa tồn tại cho tới khi áp file này; bản hiện tại thêm quyền đọc `rollouts` và `analysisruns`.
+3. **RBAC cho runners:** `kubectl apply -f deploy/bootstrap/m32-github-release-rbac.yaml` và `kubectl apply -f deploy/bootstrap/github-training-rbac.yaml`. Trên cluster mới Role chưa tồn tại cho tới khi áp file này; bản hiện tại thêm quyền đọc `rollouts` và `analysisruns`.
 4. **Application:** `kubectl apply -f deploy/argocd/inference-application-automated.yaml` trỏ về `main`. Việc này đặt lại `targetRevision`; nếu template Pod khác bản đang chạy thì Rollouts mở một canary, nên bật tải trước (bước 5).
 5. **Tải và quan sát:** `make monitoring-load-test M33_TARGET=alb M33_VUS=20 M33_RATE=40 M33_DURATION_SECONDS=900` (tải theo tốc độ cố định vào ALB internal; gate cần traffic, không có thì `canary-request-rate` inconclusive và Rollout dừng chờ), `make canary-status`, `make canary-split M42_WINDOW=45s`.
 6. **Release thật:** nếu thư mục có nhiều remote, `gh repo set-default HaiXon231/mlops-platform-aws` trước; rồi `make release-run M31_MODEL_NAME=<name> M31_MODEL_VERSION=<version>`. EKS public CIDR phải là các `/32`; workflow từ chối `0.0.0.0/0`, và `terraform apply` ghi đè `0.0.0.0/0` đặt tay. Bật tải k6 khi commit `m32: release ... by digest` xuất hiện trên `main`.
@@ -180,22 +182,35 @@ Chuẩn bị mỗi terminal mới: `export AWS_PROFILE=mlops-dev AWS_REGION=ap-s
 
    ```bash
    export AWS_PROFILE=mlops-dev AWS_REGION=ap-southeast-1
-   kubectl -n argocd delete application inference-api
-   kubectl -n mlops delete ingress inference-api
-   kubectl -n mlops delete rollout.argoproj.io inference-api
-   aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerName" --output text   # chờ tới khi trống (1-3 phút)
-   make monitoring-cleanup
-   make canary-addons-cleanup
-   export TF_VAR_eks_public_access_cidrs="[\"$(curl -4fsS https://checkip.amazonaws.com)/32\"]"   # destroy cũng cần biến này
+   # Đặt TF_VAR_eks_public_access_cidrs theo baseline /32 đã review trước plan/destroy.
    make tf-platform-down
    ```
 
-   `make tf-platform-down` hỏi gõ `destroy mlops-aws-dev`, rồi tự backup và kiểm tra Postgres, xóa namespace `mlops`, gỡ Karpenter/Argo CD (`k8s-cleanup`) và `terraform destroy`; **không chạy `cloud-teardown` hay `k8s-cleanup` riêng trước đó**. Khi Terraform hỏi `yes`, đọc plan: chỉ được hủy VPC, EKS, node group, IAM role và Pod Identity của platform, không có S3 hay ECR. Kiểm tra sau khi xong (cả ba phải trống):
-
-   ```bash
-   aws eks list-clusters --output text
-   aws ec2 describe-nat-gateways --filter Name=state,Values=available,pending --query "NatGateways[].NatGatewayId" --output text
-   aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerName" --output text
-   ```
+   Target này sau xác nhận sẽ gọi `canary-platform-cleanup`: xác định ALB bằng Ingress hostname, xác nhận tags Project/cluster, gỡ Application/Ingress, chờ đúng ALB biến mất rồi gỡ Rollout/monitoring/controllers; sau đó backup/restore-verify PostgreSQL, xóa namespace và bootstrap, cuối cùng destroy platform. Không chạy cloud-teardown lặp trước target. Không yêu cầu danh sách ALB/cluster của toàn account trống: kiểm tra tài nguyên của project bằng tags/IDs đã ghi nhận.
 
    S3 (datasets, model-artifacts, backups, state) và ECR được giữ để dựng lại; bản backup Postgres mới nhất nằm ở `postgres/` trong bucket backups.
+
+
+## 9. GitHub Actions CI/Training/Release
+
+Source CI chạy không cần AWS credentials, kể cả fork PR. Chạy tương đương bằng `make ci-infrastructure`, `make ci-training`, `make ci-serving`, `make ci-gitops`, `make check`. Terraform init/validate CI dùng backend=false trong TF_DATA_DIR tạm; không cần đọc S3 state. Serving tests tự tạo model synthetic, không cần dataset/artifacts Git-ignored.
+
+Terraform giữ release role address cũ và thêm training role riêng cùng EKS Access Entry group `mlops-github-training`. Đặt `github_oidc_subject` đúng subject **main branch** của repository; tài khoản dùng immutable subjects có thể khác subject GitHub mặc định. Không tạo OIDC provider thứ hai nếu account đã có provider; trên account mới, owner cần bootstrap provider GitHub một lần trước platform apply. Không chuyển trust sang wildcard mọi branch.
+
+Sau platform apply, áp dụng hai namespace RBAC files: `deploy/bootstrap/m32-github-release-rbac.yaml` và `deploy/bootstrap/github-training-rbac.yaml`. Cấu hình GitHub repository Variables (không phải secrets):
+
+| Variable | Giá trị |
+| --- | --- |
+| `AWS_ACCOUNT_ID`, `AWS_REGION`, `EKS_CLUSTER_NAME` | Account/region/cluster của project |
+| `AWS_ROLE_RELEASE`, `AWS_ROLE_TRAIN` | Terraform outputs `m32_github_release_role_arn`, `github_training_role_arn` |
+| `EXPECTED_REPOSITORY_ID`, `EXPECTED_OWNER_ID` | IDs thực từ GitHub API; không tái sử dụng IDs dev cho fork |
+| `INFERENCE_ECR_REPOSITORY`, `TRAINING_ECR_REPOSITORY` | ECR repository URLs của persistent outputs, không có tag/digest |
+| `DATA_BUCKET` | Persistent datasets bucket |
+
+`make train-run TRAIN_CONFIG=configs/training.yaml` chỉ dispatch cloud training. Muốn tuning, commit config mới dưới configs/ với cùng split/seed/filter/sample/evaluation identity, chỉ thay model parameters; không hạ validation threshold hoặc dùng test set. Job ghi `MLOPS_TRAINING_RESULT=`; runner đọc successful Pod, kiểm tra artifacts/Registry rồi báo approved hoặc rejected. Rejected là một kết quả training hợp lệ, không phải cloud infrastructure failure. Cleanup chỉ xóa Job của run, giữ Registry/artifacts và ECR image làm đầu vào/truy vết.
+
+`make release-run M31_MODEL_NAME=<name> M31_MODEL_VERSION=<version>` nhận version đã approved; không tự train. Smoke kiểm tra exact name/version/release/checksum/run/source SHA trước traffic. Gate serving-error chỉ đếm 5xx; 422 của client vẫn hiện metrics nhưng không reject candidate. Dispatch tùy chọn `canary_test_cpu=100m` chỉ dùng cho E2E latency: resources của candidate template bị giới hạn, stable ReplicaSet giữ nguyên. Mặc định off; normal release sau đó khôi phục CPU gốc nếu còn test annotations. Phải có tải hợp lệ qua ALB và ghi outcome thực; không khẳng định test sẽ fail nếu tải không đủ. Không dùng invalid payload để chứng minh model/server lỗi.
+
+Cả hai workflows serialize endpoint updates bằng chung concurrency group; cleanup always() khôi phục baseline CIDRs. Runner bị kill/cancel đột ngột vẫn có thể không cleanup; đối chiếu baseline trong run summary, giữ public/private endpoint modes và các admin /32. Không dùng `0.0.0.0/0`. Branch protection chặn commit/revert phải xử lý theo quy trình Git được phép; workflow không bypass hoặc force push.
+
+Nếu cluster đã absent, bootstrap platform/MLflow từ backup trước dispatch; chỉ cài IAM roles không tạo EKS Access Entries/RBAC hoặc phục hồi Registry. Các outputs/state/backup keys cần kiểm tra lại, không dùng snapshot cũ làm live state.

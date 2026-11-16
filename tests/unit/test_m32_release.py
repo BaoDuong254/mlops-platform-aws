@@ -127,7 +127,7 @@ def test_idempotent_promotion_and_readback(monkeypatch):
         version = "1"
 
         def get_model_version_by_alias(self, name, alias):
-            return type("Alias", (), {"version": self.version, "run_id": "mlflow-run"})()
+            return type("Alias", (), {"version": int(self.version), "run_id": "mlflow-run"})()
 
         def set_registered_model_alias(self, name, alias, version):
             self.calls += 1
@@ -142,13 +142,31 @@ def test_idempotent_promotion_and_readback(monkeypatch):
 
 
 def test_workflow_has_one_release_commit_and_no_legacy_handshake():
-    workflow = (ROOT / ".github/workflows/m32-release.yml").read_text()
+    workflow = (ROOT / ".github/workflows/release.yml").read_text()
     iam = (ROOT / "infra/terraform/platform/m32_release_iam.tf").read_text()
     access = (ROOT / "infra/terraform/platform/eks.tf").read_text()
     assert workflow.count("git commit") == 0  # One commit is made inside m32_release.sh.
     assert (ROOT / "scripts/m32_release.sh").read_text().count("git commit") == 1
     assert "inference.release_s3" not in workflow
     assert "PostSync" not in workflow
-    assert "scripts/m32_eks_cidr.py close" in workflow and "if: always()" in workflow
-    assert "repo:HaiXon231@204581707/mlops-platform-aws@1424395869:ref:refs/heads/main" in iam
+    assert "scripts/m32_eks_cidr.py close" in workflow and "always()" in workflow
+    assert "m32_github_subject = var.github_oidc_subject" in iam
     assert 'kubernetes_groups = ["mlops-github-release"]' in access
+
+
+def test_optional_cpu_fault_changes_only_candidate_template(monkeypatch, tmp_path):
+    bundle=tmp_path/'bundle'; bundle.mkdir()
+    metadata=release_metadata()
+    monkeypatch.setattr(gitops,'validate_release',lambda _: (metadata,None))
+    path=tmp_path/'deployment.yaml'; path.write_text(gitops.DEPLOYMENT.read_text())
+    original=yaml.safe_load(path.read_text())
+    gitops.update_manifest(bundle, IMAGE, path, candidate_cpu='100m')
+    current=yaml.safe_load(path.read_text())
+    resources=current['spec']['template']['spec']['containers'][0]['resources']
+    assert resources['requests']['cpu']==resources['limits']['cpu']=='100m'
+    assert original['spec']['template']['spec']['containers'][0]['resources']['limits']['cpu']=='1'
+    gitops.update_manifest(bundle, IMAGE, path, candidate_cpu='off')
+    restored=yaml.safe_load(path.read_text())['spec']['template']['spec']['containers'][0]['resources']
+    assert restored['limits']['cpu']=='1' and restored['requests']['cpu']=='250m'
+    with pytest.raises(ValueError,match='Candidate CPU'):
+        gitops.update_manifest(bundle,IMAGE,path,candidate_cpu='1m')

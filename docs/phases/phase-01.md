@@ -26,3 +26,5 @@ Theo [setup](../setup.md): `make tf-bootstrap-init`, `make tf-bootstrap-plan`, `
 
 ## 9. Hạn chế vận hành
 Một NAT, một system node ban đầu và EBS theo AZ chưa HA. Mạng quản trị có IP egress thay đổi; cập nhật CIDRs an toàn qua Terraform, không mở toàn Internet. `make tf-platform-down` chỉ dành cho shutdown đã backup, có xác nhận; persistent S3/ECR và bootstrap state cần được giữ.
+
+> **Sau chuẩn hóa workflows:** source CI là `ci.yml`, cloud training là `train.yml`, approved release là `release.yml`. Serving runtime sau Phase 4 do Rollout quản lý; Deployment là template và có thể 0/0. Tài liệu này giữ phạm vi/lịch sử của Phase tương ứng; setup mới phải đọc thêm setup.md mục 8–9.

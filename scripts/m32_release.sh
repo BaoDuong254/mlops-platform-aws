@@ -34,9 +34,13 @@ release_id="m32-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 serving_sha="$(git rev-parse HEAD)"
 bundle="artifacts/releases/${MODEL_NAME}-v${MODEL_VERSION}"
 expected="artifacts/m32-expected.json"
-repo="160616607747.dkr.ecr.${AWS_REGION}.amazonaws.com/mlops-aws-inference-dev"
+account="$(aws sts get-caller-identity --query Account --output text)"
+repo="${INFERENCE_ECR_REPOSITORY:-$account.dkr.ecr.${AWS_REGION}.amazonaws.com/mlops-aws-inference-dev}"
+export INFERENCE_ECR_REPOSITORY="$repo"
+previous="$RUNNER_TEMP/previous-serving.json"
 
-aws eks update-kubeconfig --name mlops-aws-dev --region "$AWS_REGION"
+aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME:-mlops-aws-dev}" --region "$AWS_REGION"
+uv run --locked python scripts/release_snapshot.py > "$previous"
 kubectl -n mlops port-forward --address 127.0.0.1 service/mlflow 15000:5000 >"$RUNNER_TEMP/m32-mlflow-tunnel.log" 2>&1 &
 mlflow_pid=$!
 wait_tunnel "$mlflow_pid" http://127.0.0.1:15000/health "$RUNNER_TEMP/m32-mlflow-tunnel.log"
@@ -58,7 +62,7 @@ aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS 
 docker push "$repo:$tag"
 digest=''
 for _ in $(seq 1 12); do
-  digest="$(aws ecr describe-images --repository-name mlops-aws-inference-dev \
+  digest="$(aws ecr describe-images --repository-name "${repo##*/}" \
     --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)"
   if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then break; fi
   sleep 5
@@ -67,11 +71,11 @@ done
 image="$repo@$digest"
 
 uv run --locked python scripts/m32_gitops.py render --bundle "$bundle" \
-  --image "$image" --expected-output "$expected" >/dev/null
+  --image "$image" --candidate-cpu "${CANARY_TEST_CPU:-off}" --expected-output "$expected" >/dev/null
 uv run --locked python scripts/m31-validate-manifest.py
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-git add deploy/gitops/inference/deployment.yaml
+git add deploy/gitops/inference/deployment.yaml deploy/gitops/inference/rollout.yaml
 if git diff --cached --quiet; then
   echo 'Manifest unchanged; expected a distinct release-id annotation for this attempt' >&2
   exit 1
@@ -113,7 +117,7 @@ if [[ "$outcome" -eq 3 ]]; then
     echo "champion alias was NOT changed."
   } >> "$GITHUB_STEP_SUMMARY"
   uv run --locked python scripts/m32_verify.py --expected "$expected" --commit "$revert_commit" \
-    --mlflow-uri "$MLFLOW_TRACKING_URI" --inference-uri http://127.0.0.1:18000 --wait-reverted
+    --mlflow-uri "$MLFLOW_TRACKING_URI" --inference-uri http://127.0.0.1:18000 --wait-reverted --previous "$previous"
   echo "Release $release_id failed its canary gates; stable restored and recorded in Git." >&2
   exit 1
 fi

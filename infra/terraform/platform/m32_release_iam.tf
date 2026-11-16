@@ -8,7 +8,7 @@ locals {
   m32_ecr_arn    = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/mlops-aws-inference-${var.environment}"
   # GitHub repository currently uses immutable OIDC subjects. Verified by its
   # OIDC customization API: owner 204581707, repository 1424395869.
-  m32_github_subject = "repo:HaiXon231@204581707/mlops-platform-aws@1424395869:ref:refs/heads/main"
+  m32_github_subject = var.github_oidc_subject
 }
 
 data "aws_iam_policy_document" "m32_github_trust" {
@@ -55,7 +55,7 @@ data "aws_iam_policy_document" "m32_github_release" {
   statement {
     sid       = "ManageTemporaryEksApiCidr"
     actions   = ["eks:DescribeCluster", "eks:UpdateClusterConfig", "eks:DescribeUpdate", "eks:ListUpdates"]
-    resources = [module.eks.cluster_arn]
+    resources = ["arn:aws:eks:${var.aws_region}:${data.aws_caller_identity.current.account_id}:cluster/${local.cluster_name}"]
   }
   statement {
     sid       = "GetEcrLogin"

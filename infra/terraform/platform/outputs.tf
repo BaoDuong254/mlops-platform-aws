@@ -112,3 +112,8 @@ output "alb_controller_role_arn" {
   description = "Pod Identity role for kube-system/aws-load-balancer-controller."
   value       = aws_iam_role.alb_controller.arn
 }
+
+output "github_training_role_arn" {
+  description = "Main-only OIDC training role, distinct from release."
+  value       = aws_iam_role.github_training.arn
+}

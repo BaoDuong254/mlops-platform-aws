@@ -28,3 +28,13 @@ variable "eks_public_access_cidrs" {
     error_message = "Provide at least one administrator IPv4 address as a /32 CIDR; broad ranges are not allowed."
   }
 }
+
+variable "github_oidc_subject" {
+  description = "Exact GitHub main-branch OIDC subject; match the repository's subject customization."
+  type        = string
+  default     = "repo:HaiXon231@204581707/mlops-platform-aws@1424395869:ref:refs/heads/main"
+  validation {
+    condition     = startswith(var.github_oidc_subject, "repo:") && endswith(var.github_oidc_subject, ":ref:refs/heads/main")
+    error_message = "The OIDC subject must identify a repository and refs/heads/main."
+  }
+}

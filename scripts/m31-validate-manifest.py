@@ -11,7 +11,7 @@ service = yaml.safe_load((root / "deploy/gitops/inference/service.yaml").read_te
 pod = deployment["spec"]["template"]
 container = pod["spec"]["containers"][0]
 image = container["image"]
-assert re.fullmatch(r"\d+\.dkr\.ecr\.ap-southeast-1\.amazonaws\.com/mlops-aws-inference-dev@sha256:[0-9a-f]{64}", image), "Use existing inference ECR repository and a digest"
+assert re.fullmatch(r"\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/mlops-aws-inference-[a-z0-9-]+@sha256:[0-9a-f]{64}", image), "Use existing inference ECR repository and a digest"
 assert not image.endswith("0" * 64), "Replace placeholder digest before deployment"
 assert deployment["metadata"]["namespace"] == service["metadata"]["namespace"] == "mlops"
 version = deployment["metadata"]["labels"]["mlops.aws/model-version"]

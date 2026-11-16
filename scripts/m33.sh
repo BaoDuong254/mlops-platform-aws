@@ -47,6 +47,8 @@ verify() {
   local prom_pid=$!
   kubectl -n monitoring port-forward --address 127.0.0.1 service/m33-grafana 13000:80 >/tmp/m33-grafana-port-forward.log 2>&1 &
   local grafana_pid=$!
+  # Capture function-local PIDs now for EXIT after scope ends.
+  # shellcheck disable=SC2064
   trap "kill $prom_pid $grafana_pid 2>/dev/null || true" EXIT
   local attempt replicas
   # Rollout sở hữu replica sau khi canary được áp dụng; trước đó vẫn là Deployment.

@@ -18,6 +18,9 @@ spec:
       serviceAccountName: training
       securityContext:
         fsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
       nodeSelector:
         mlops.aws/workload: training
         karpenter.sh/capacity-type: spot
@@ -33,17 +36,23 @@ spec:
           command: [sh, -ec]
           args:
             - >-
-              mlops-cloud fetch --bucket "$$DATA_BUCKET" --config configs/training.yaml --data-dir /app/dataset
-              && mlops-train train --config configs/training.yaml --input-dir /app/dataset
+              mlops-cloud fetch --bucket "$$DATA_BUCKET" --config "$$TRAINING_CONFIG" --data-dir /app/dataset
+              && mlops-train train --config "$$TRAINING_CONFIG" --input-dir /app/dataset
               --output-dir /app/artifacts/training --track --mlflow-config configs/mlflow.yaml
-              --tracking-uri "$$MLFLOW_TRACKING_URI"
+              --tracking-uri "$$MLFLOW_TRACKING_URI" --result-json /app/artifacts/result.json
           env:
+            - name: TRAINING_CONFIG
+              value: ${TRAINING_CONFIG}
             - name: DATA_BUCKET
               value: ${DATA_BUCKET}
             - name: MLFLOW_TRACKING_URI
               value: http://mlflow.mlops.svc.cluster.local:5000
             - name: AWS_DEFAULT_REGION
               value: ap-southeast-1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           resources:
             requests:
               cpu: 1200m

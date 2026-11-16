@@ -122,6 +122,20 @@ def test_runner_rbac_can_read_rollout_and_analysis_but_not_change_them():
 
 
 def test_workflow_still_restores_cidrs_even_when_the_canary_fails():
-    workflow = (ROOT / ".github/workflows/m32-release.yml").read_text()
+    workflow = (ROOT / ".github/workflows/release.yml").read_text()
     assert re.search(r"close --state-file[^\n]*", workflow)
-    assert "if: always()" in workflow
+    assert "always()" in workflow
+
+
+def test_wait_reverted_requires_previous_digest_ready_not_only_rollout_healthy(monkeypatch):
+    monkeypatch.setattr(verify, 'command_json', lambda *args: rollout(phase='Healthy',stableRS='new'))
+    monkeypatch.setattr(verify, 'application_matches', lambda commit: True)
+    calls=[]
+    def state(previous):
+        calls.append(previous)
+        return 'progressing' if len(calls)==1 else 'promoted'
+    monkeypatch.setattr(verify,'live_state',state)
+    monkeypatch.setattr(verify.time,'sleep',lambda _:None)
+    previous={'image':IMAGE,'release_id':'old'}
+    verify.wait_for_reverted('revert',previous)
+    assert calls==[previous,previous]

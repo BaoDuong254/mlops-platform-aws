@@ -43,3 +43,16 @@ def test_backup_key_cannot_escape_prefix(tmp_path, monkeypatch):
     monkeypatch.setenv("PGDATABASE", "mlflow")
     with pytest.raises(ValueError, match="postgres"):
         backup.fetch(FakeS3(b"", {}), "backups", "../other.dump", tmp_path / "unused.dump")
+
+
+def test_primary_restore_uses_transaction_and_fails_without_claiming_success(monkeypatch, tmp_path):
+    calls=[]
+    monkeypatch.setenv("PGDATABASE", "mlflow")
+    def pg(*args, **kwargs):
+        calls.append(args)
+        if args[0] == "psql": return "0"
+        raise RuntimeError("restore failed")
+    monkeypatch.setattr(backup,"pg",pg)
+    with pytest.raises(RuntimeError, match="restore failed"):
+        backup.restore_primary(tmp_path / "db.dump", {})
+    assert "--single-transaction" in calls[-1] and "--exit-on-error" in calls[-1]

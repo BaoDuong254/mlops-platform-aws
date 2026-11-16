@@ -1,6 +1,5 @@
 """End-to-end parity against an actual MLflow Registry version in local SQLite."""
 
-from pathlib import Path
 
 import mlflow
 import mlflow.lightgbm
@@ -12,15 +11,10 @@ from inference.export import export_model
 from training.features import preprocess_request
 from training.tracking import TrackingConfig, import_run
 
-ROOT = Path(__file__).resolve().parents[2]
 
-
-def test_approved_registry_export_and_prediction_parity(tmp_path, monkeypatch):
-    runs = sorted((ROOT / "artifacts/training").glob("*/model.txt"))
-    if not runs:
-        pytest.skip("No local M2.1 model artifacts available")
+def test_approved_registry_export_and_prediction_parity(tmp_path, monkeypatch, training_run):
     monkeypatch.chdir(tmp_path)
-    run_dir = runs[-1].parent
+    run_dir = training_run
     uri = f"sqlite:///{tmp_path / 'registry.db'}"
     registered = import_run(run_dir, uri, TrackingConfig("m31-export-test", "m31-taxi-model", 0.01))
     assert registered["validation_status"] == "approved"
@@ -39,9 +33,6 @@ def test_approved_registry_export_and_prediction_parity(tmp_path, monkeypatch):
 
 
 def test_export_rejects_unapproved_version(tmp_path, monkeypatch):
-    runs = sorted((ROOT / "artifacts/training").glob("*/model.txt"))
-    if not runs:
-        pytest.skip("No local M2.1 model artifacts available")
     monkeypatch.chdir(tmp_path)
     uri = f"sqlite:///{tmp_path / 'registry.db'}"
     from mlflow import MlflowClient

@@ -113,8 +113,8 @@ def make_app(bundle_path: Path | None = None) -> FastAPI:
         }
         try:
             prediction = model.predict(features)
-            if not math.isfinite(prediction):
-                raise ValueError("Non-finite model output")
+            if not math.isfinite(prediction) or prediction <= 0:
+                raise ValueError("Model output must be positive and finite")
         except Exception as error:
             LOG.exception("Prediction failed")
             raise HTTPException(status_code=500, detail="Prediction failed") from error

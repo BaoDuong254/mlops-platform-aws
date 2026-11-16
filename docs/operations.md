@@ -37,15 +37,15 @@ Cloud MLflow UI: `make m23-port-forward` rồi mở `http://127.0.0.1:5000`. N�
 
 ## GitOps và release
 
-Release model đã approved: `make release-test` rồi `make release-run M31_MODEL_NAME=<name> M31_MODEL_VERSION=<explicit-version>`. Xem `gh run list --workflow m32-release.yml --limit 5` và run summary; phải có Registry version/run ID, artifact checksum, ECR digest, một GitOps commit, Argo CD revision, Pod imageID, prediction và champion read-back. `make release-gitops-verify` chỉ đọc cluster. Direct push bị branch protection từ chối sẽ để image trong ECR nhưng không promote; giải quyết quy trình merge rồi dispatch lại, không force push.
+Release model đã approved: `make release-test` rồi `make release-run M31_MODEL_NAME=<name> M31_MODEL_VERSION=<explicit-version>`. Xem `gh run list --workflow release.yml --limit 5` và run summary; phải có Registry version/run ID, artifact checksum, ECR digest, một GitOps commit, Argo CD revision, Pod imageID, prediction và champion read-back. `make release-gitops-verify` chỉ đọc cluster. Direct push bị branch protection từ chối sẽ để image trong ECR nhưng không promote; giải quyết quy trình merge rồi dispatch lại, không force push.
 
 Nếu workflow bị gián đoạn, kiểm tra EKS `publicAccessCidrs` đã bằng danh sách ban đầu trong GitHub run summary. CIDR recovery script giữ snapshot ở runner và bước cleanup `always()`; runner bị hủy đột ngột vẫn có thể cần khôi phục thủ công. Giữ public/private endpoints và tất cả admin CIDRs. Không dùng `kubectl apply` trực tiếp cho serving do Argo CD quản lý.
 
-Argo CD UI: `make argocd-port-forward` rồi mở `https://127.0.0.1:8080`. Password/SSO tuân theo cấu hình cluster, không nằm trong repository. Application `inference-api` phải Synced/Healthy và chỉ sở hữu Deployment, Service, HPA trong `mlops`.
+Argo CD UI: `make argocd-port-forward` rồi mở `https://127.0.0.1:8080`. Password/SSO tuân theo cấu hình cluster, không nằm trong repository. Application `inference-api` phải Synced/Healthy và sở hữu các resources trong serving Kustomize path (Deployment template, Rollout, hai Services, Ingress, AnalysisTemplates, HPA) trong `mlops`.
 
 ## Canary (Phase 4)
 
-Add-on: `make canary-addons-deploy` rồi `make canary-addons-verify` (LB Controller và Argo Rollouts, cần Terraform platform đã apply). Quan sát: `make canary-status` (Rollout, AnalysisRun, ALB), `make canary-split M42_WINDOW=45s` (tỷ lệ request theo ReplicaSet, cửa sổ phải nằm trong một bước canary). Tải qua ALB: `make monitoring-load-test M33_TARGET=alb` (biến tải là `LOAD_*`, tốc độ cố định). Rollout `Paused` do AnalysisRun `Inconclusive` cần xem `kubectl -n mlops get analysisrun.argoproj.io <tên> -o yaml`; `Degraded` có thể không có `status.abort` khi chỉ là `ProgressDeadlineExceeded`. Để thử canary bị từ chối khi release thật, bật tải `make monitoring-load-test M33_TARGET=alb M33_PAYLOAD=invalid ...` ngay khi commit digest của bot xuất hiện (workflow sẽ đỏ và tự revert). Khôi phục Git sau canary hỏng bằng `git revert` commit đã đổi template, không sửa Rollout bằng tay vì Argo CD `selfHeal` sẽ ghi đè.
+Add-on: `make canary-addons-deploy` rồi `make canary-addons-verify` (LB Controller và Argo Rollouts, cần Terraform platform đã apply). Quan sát: `make canary-status` (Rollout, AnalysisRun, ALB), `make canary-split M42_WINDOW=45s` (tỷ lệ request theo ReplicaSet, cửa sổ phải nằm trong một bước canary). Tải qua ALB: `make monitoring-load-test M33_TARGET=alb` (biến tải là `LOAD_*`, tốc độ cố định). Rollout `Paused` do AnalysisRun `Inconclusive` cần xem `kubectl -n mlops get analysisrun.argoproj.io <tên> -o yaml`; `Degraded` có thể không có `status.abort` khi chỉ là `ProgressDeadlineExceeded`. Không dùng tải 422 làm bằng chứng serving failure: gate hiện chỉ xét 5xx. Để thử latency failure riêng candidate ở E2E, dispatch release với `canary_test_cpu=100m` có chủ đích và tải hợp lệ qua ALB; kiểm tra gates/outcome thực. Khôi phục Git sau canary hỏng bằng `git revert` commit đã đổi template, không sửa Rollout bằng tay vì Argo CD `selfHeal` sẽ ghi đè.
 
 Dọn dẹp (lệnh đầy đủ ở [setup.md mục 8, bước 7](setup.md#8-canary-và-rollback-phase-4)): xóa Application **không** xóa Ingress/ALB vì Application không có finalizer; xóa Ingress và Rollout, **chờ ALB biến mất** trước `make canary-addons-cleanup` và `make tf-platform-down`; ALB còn tồn tại giữ ENI/security group và chặn xóa VPC. Public API EKS chỉ nhận IP `/32`; `0.0.0.0/0` đặt tay sẽ bị `terraform apply` ghi đè và release workflow từ chối chạy.
 
@@ -87,3 +87,10 @@ Thứ tự cleanup khi **thực sự muốn dừng môi trường**: xác nhận
 - HPA `<unknown>`: Metrics Server add-on, `kubectl top` và CPU requests.
 - Grafana Pending khi upgrade: chart dùng `Recreate` vì system node không đủ request cho hai Pods; dashboard ConfigMap được poll 30 giây.
 - MLflow 403 qua tunnel: xác nhận đang dùng cloud service và Host header hợp lệ; xem logs MLflow.
+
+
+## Failure boundaries của workflows
+
+Chỉ kết quả canary bị từ chối (exit 3) mới kích hoạt guarded revert trong release. Inconclusive/timeout, main di chuyển, API/Registry verification lỗi sau promotion, mất runner/network không được coi là rollback đã hoàn tất. Khi đó đọc run log, Rollout/AnalysisRun, Application revision, stable/current hashes và exact imageID; không đổi champion thủ công để che lỗi. `m32_verify.py` mặc định có thể promote alias, không dùng như lệnh read-only; dùng `m32_champion_info.py` để đọc.
+
+`make tf-platform-down` hiện tích hợp cleanup Phase 4 trước cloud teardown. Kiểm tra đúng project ALB qua Ingress và tags, chờ controller dọn trước khi gỡ controller. Legacy `m31-deploy`/`m31-cleanup` đã bị vô hiệu hóa để tránh bỏ qua quyền sở hữu GitOps. Không chạy cleanup hoặc backup mới chỉ để đọc status.

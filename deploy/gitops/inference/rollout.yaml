@@ -5,13 +5,17 @@ metadata:
   namespace: mlops
   labels:
     app: inference-api
+  annotations:
+    mlops.aws/model-name: nyc-taxi-trip-duration
+    mlops.aws/model-version: '1'
+    mlops.aws/release-id: m32-42011637577-1
+    mlops.aws/artifact-checksum: d35626fd5e47c1e874be1cb4bb1d04278a33c07a34109cc6df2eccf6a0dcf6b3
+    mlops.aws/serving-git-sha: a069afa3fbdba2dd174ee617a6fba48758ded005
+    mlops.aws/mlflow-run-id: bb3155725d1149a8bfeefd1a9f184dbf
 spec:
-  # Số replica do HPA quản lý (xem hpa.yaml và ignoreDifferences trong Application).
   replicas: 1
   revisionHistoryLimit: 2
   progressDeadlineSeconds: 600
-  # Pod template lấy từ Deployment hiện có, nên release chỉ cần sửa deployment.yaml.
-  # Sau khi Rollout Healthy, Deployment được thu về 0 replica.
   workloadRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -26,32 +30,51 @@ spec:
           ingress: inference-api
           servicePort: 8000
       analysis:
-        # Chạy nền suốt rollout: canary tắc nghẽn hoặc lỗi thì abort ngay,
-        # không đợi tới bước kế tiếp.
         startingStep: 3
         templates:
-          - templateName: inference-canary-gate
+        - templateName: inference-canary-gate
         args:
-          - name: canary-hash
-            valueFrom:
-              podTemplateHashValue: Latest
-          - name: stable-hash
-            valueFrom:
-              podTemplateHashValue: Stable
+        - name: canary-hash
+          valueFrom:
+            podTemplateHashValue: Latest
+        - name: stable-hash
+          valueFrom:
+            podTemplateHashValue: Stable
       steps:
-        # Bước 0: canary có 1 Pod nhưng chưa nhận traffic; smoke test gọi thẳng Service canary.
-        - setCanaryScale:
-            replicas: 1
-        - setWeight: 0
-        - analysis:
-            templates:
-              - templateName: inference-canary-smoke
-        # Bước 1: 10% traffic, đo metric vận hành.
-        - setWeight: 10
-        - pause:
-            duration: 2m
-        # Bước 2: 50% traffic.
-        - setWeight: 50
-        - pause:
-            duration: 2m
-        # Hết bước cuối: Rollouts tự đưa canary lên 100%.
+      - setCanaryScale:
+          replicas: 1
+      - setWeight: 0
+      - analysis:
+          templates:
+          - templateName: inference-canary-smoke
+          args:
+          - name: model-name
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['mlops.aws/model-name']
+          - name: model-version
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['mlops.aws/model-version']
+          - name: release-id
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['mlops.aws/release-id']
+          - name: artifact-checksum
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['mlops.aws/artifact-checksum']
+          - name: serving-git-sha
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['mlops.aws/serving-git-sha']
+          - name: mlflow-run-id
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['mlops.aws/mlflow-run-id']
+      - setWeight: 10
+      - pause:
+          duration: 2m
+      - setWeight: 50
+      - pause:
+          duration: 2m

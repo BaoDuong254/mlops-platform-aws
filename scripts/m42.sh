@@ -26,6 +26,8 @@ split() {
     >/tmp/m42-prometheus-port-forward.log 2>&1 &
   local pid=$!
   # Chuỗi trong dấu nháy kép: biến local không còn tồn tại khi trap EXIT chạy, nên phải mở rộng ngay.
+  # Capture function-local PIDs now for EXIT after scope ends.
+  # shellcheck disable=SC2064
   trap "kill $pid 2>/dev/null || true" EXIT
   for _ in $(seq 1 20); do
     curl -fsS --max-time 2 http://127.0.0.1:19091/-/ready >/dev/null 2>&1 && break

@@ -1,0 +1,36 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-training
+  namespace: mlops
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, list, watch, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods/portforward]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [services]
+    resourceNames: [mlflow]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-training
+  namespace: mlops
+subjects:
+  - kind: Group
+    name: mlops-github-training
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: github-training
+  apiGroup: rbac.authorization.k8s.io

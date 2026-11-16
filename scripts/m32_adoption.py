@@ -53,9 +53,15 @@ def check() -> None:
     for field in ("type", "selector", "ports"):
         _subset(service["spec"][field], actual_service["spec"].get(field), "service.spec." + field)
     replicas = live_spec.get("replicas", 0)
-    if replicas < 1 or actual_deployment.get("status", {}).get("readyReplicas", 0) != replicas:
+    if replicas == 0:
+        rollout = _live("rollout.argoproj.io", "inference-api")
+        status = rollout.get("status", {})
+        if (status.get("phase") != "Healthy" or not status.get("stableRS") or
+                status.get("currentPodHash") != status["stableRS"] or status.get("readyReplicas", 0) < 1):
+            raise ValueError("Serving Rollout is not stable and Ready")
+    elif actual_deployment.get("status", {}).get("readyReplicas", 0) != replicas:
         raise ValueError("Serving deployment is not Ready")
-    print("Live inference Deployment/Service match desired GitOps state and are Ready")
+    print("Live inference template/Service match GitOps; serving Deployment or Rollout is Ready")
 
 
 if __name__ == "__main__":
