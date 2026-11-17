@@ -61,7 +61,13 @@ jobs:
       with:
         role-to-assume: ${{ vars.AWS_ROLE_RELEASE }}
         aws-region: ${{ env.AWS_REGION }}
-        allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+    - name: Verify authenticated AWS account
+      run: |
+        actual_account="$(aws sts get-caller-identity --query Account --output text)"
+        if [[ "$actual_account" != "$AWS_ACCOUNT_ID" ]]; then
+          echo '::error::Authenticated AWS account differs from the configured project account'
+          exit 1
+        fi
     - name: Admit runner IPv4 only
       run: python3 scripts/m32_eks_cidr.py open --state-file "$RUNNER_TEMP/eks-cidrs.json"
     - name: Export, build, deploy, verify and promote one release

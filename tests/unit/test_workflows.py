@@ -1,6 +1,8 @@
 """Workflow separation, fail-closed trust, serialization and pre-traffic identity."""
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -102,3 +104,30 @@ def test_adoption_accepts_zero_replica_template_only_with_healthy_rollout(monkey
     adoption.check()
     rollout['status']['phase']='Degraded'
     with pytest.raises(ValueError,match='Rollout'):adoption.check()
+
+
+@pytest.mark.parametrize("workflow,job", [("train", "train"), ("release", "release")])
+@pytest.mark.parametrize("identity,sts_exit,expected_exit", [
+    ("111111111111", 0, 0),
+    ("222222222222", 0, 1),
+    ("", 42, 42),
+])
+def test_account_guard_fails_closed_before_eks_mutation(tmp_path, workflow, job,
+                                                     identity, sts_exit, expected_exit):
+    document = yaml.safe_load((ROOT / ".github/workflows" / f"{workflow}.yml").read_text())
+    steps = document["jobs"][job]["steps"]
+    auth_index = next(i for i, step in enumerate(steps)
+                      if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@"))
+    guard_index = next(i for i, step in enumerate(steps)
+                       if step.get("name") == "Verify authenticated AWS account")
+    open_index = next(i for i, step in enumerate(steps)
+                      if step.get("name") == "Admit runner IPv4 only")
+    assert auth_index < guard_index < open_index
+    assert "allowed-account-ids" not in steps[auth_index].get("with", {})
+    aws = tmp_path / "aws"
+    aws.write_text(f"#!/bin/sh\nprintf '%s\\n' '{identity}'\nexit {sts_exit}\n")
+    aws.chmod(0o700)
+    env = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}", AWS_ACCOUNT_ID="111111111111")
+    result = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c",
+                             steps[guard_index]["run"]], env=env, capture_output=True, text=True)
+    assert result.returncode == expected_exit

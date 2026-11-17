@@ -5,8 +5,8 @@ import { check } from 'k6';
 // khiến constant-arrival-rate bị bỏ qua. Các biến LOAD_* là của repo này.
 const vus = Number(__ENV.LOAD_VUS || 10);
 const baseUrl = __ENV.LOAD_BASE_URL || 'http://inference-api.mlops.svc.cluster.local:8000';
-// LOAD_PAYLOAD=invalid gửi location ngoài 1..263 nên API trả 422. Chỉ dùng để chứng minh gate
-// tỷ lệ lỗi fail khi canary nhận request lỗi; 422 được coi là phản hồi mong đợi để k6 không báo hỏng.
+// LOAD_PAYLOAD=invalid gửi location ngoài 1..263 nên API trả 422, dùng kiểm tra input validation.
+// 422 là client error, không chứng minh candidate fail gate 5xx; k6 coi 422 là phản hồi mong đợi.
 const invalid = (__ENV.LOAD_PAYLOAD || 'valid') === 'invalid';
 if (invalid) {
   http.setResponseCallback(http.expectedStatuses(422));
