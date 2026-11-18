@@ -13,9 +13,9 @@ duration_max_minutes: 180
 early_stopping_rounds: 30
 model:
   objective: regression_l1
-  n_estimators: 1500
+  n_estimators: 1
   learning_rate: 0.05
-  num_leaves: 127
+  num_leaves: 2
   max_depth: -1
   min_child_samples: 30
   subsample: 1.0
