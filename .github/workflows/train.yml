@@ -7,15 +7,63 @@ name: Cloud Training
         required: true
         default: configs/training.yaml
         type: string
+  workflow_call:
+    inputs:
+      automatic:
+        type: boolean
+        default: false
+      source_sha:
+        required: true
+        type: string
+      training_config:
+        type: string
+        default: configs/training.yaml
+    outputs:
+      validation_status:
+        description: Verified training decision, not deployment acceptance
+        value: ${{ jobs.train.outputs.validation_status }}
+      model_name:
+        description: Verified training decision, not deployment acceptance
+        value: ${{ jobs.train.outputs.model_name }}
+      model_version:
+        description: Verified training decision, not deployment acceptance
+        value: ${{ jobs.train.outputs.model_version }}
 permissions:
-  contents: read
+  contents: write
   id-token: write
-concurrency:
-  group: eks-${{ vars.EKS_CLUSTER_NAME || 'mlops-aws-dev' }}-mutation
-  cancel-in-progress: false
+  actions: read
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      train: ${{ steps.plan.outputs.train }}
+      base_sha: ${{ steps.plan.outputs.base_sha }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ inputs.source_sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: true
+    - id: plan
+      name: Plan training without AWS credentials
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 scripts/auto_mlops.py plan
+    - name: Persist intent before cloud mutation
+      if: inputs.automatic && (steps.plan.outputs.train == 'true' || steps.plan.outputs.reason == 'stale')
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: auto-mlops-intent-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/auto-intent/auto-checkpoint.json
+        if-no-files-found: error
+        retention-days: 90
   train:
-    if: github.ref == 'refs/heads/main'
+    name: MLOps Cloud Training
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.train == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 210
     env:
@@ -24,15 +72,15 @@ jobs:
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'mlops-aws-dev' }}
       EXPECTED_REPOSITORY_ID: ${{ vars.EXPECTED_REPOSITORY_ID }}
       EXPECTED_OWNER_ID: ${{ vars.EXPECTED_OWNER_ID }}
-      TRAINING_CONFIG: ${{ inputs.training_config }}
+      TRAINING_CONFIG: ${{ inputs.training_config || 'configs/training.yaml' }}
       TRAINING_ECR_REPOSITORY: ${{ vars.TRAINING_ECR_REPOSITORY }}
       DATA_BUCKET: ${{ vars.DATA_BUCKET }}
     steps:
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
-        ref: main
+        ref: ${{ inputs.source_sha || github.sha }}
         fetch-depth: 0
-        persist-credentials: false
+        persist-credentials: true
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: '3.12'
@@ -50,11 +98,21 @@ jobs:
       with:
         role-to-assume: ${{ vars.AWS_ROLE_TRAIN }}
         aws-region: ${{ env.AWS_REGION }}
-        allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+    - name: Verify authenticated AWS account
+      run: |
+        actual_account="$(aws sts get-caller-identity --query Account --output text)"
+        if [[ "$actual_account" != "$AWS_ACCOUNT_ID" ]]; then
+          echo '::error::Authenticated AWS account differs from the configured project account'
+          exit 1
+        fi
     - name: Admit runner IPv4 only
       run: python3 scripts/m32_eks_cidr.py open --state-file "$RUNNER_TEMP/eks-cidrs.json"
     - name: Build, train on Spot and verify Registry decision
       run: bash scripts/train_workflow.sh
+    - id: decision
+      name: Publish verified model decision
+      run: uv run --locked python scripts/training_result.py outputs --path "$RUNNER_TEMP/training-result.json"
+        --source-sha "$SOURCE_SHA"
     - name: Restore exact original EKS CIDRs
       if: ${{ always() }}
       run: python3 scripts/m32_eks_cidr.py close --state-file "$RUNNER_TEMP/eks-cidrs.json"
@@ -66,3 +124,68 @@ jobs:
         path: ${{ runner.temp }}/training-result.json
         if-no-files-found: ignore
         retention-days: 14
+    needs:
+    - plan
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: eks-${{ vars.EKS_CLUSTER_NAME || 'mlops-aws-dev' }}-mutation
+      cancel-in-progress: false
+    outputs:
+      validation_status: ${{ steps.decision.outputs.validation_status }}
+      model_name: ${{ steps.decision.outputs.model_name }}
+      model_version: ${{ steps.decision.outputs.model_version }}
+      handoff: ${{ steps.decision.outputs.handoff }}
+  release:
+    needs:
+    - train
+    if: inputs.automatic && needs.train.result == 'success' && needs.train.outputs.validation_status == 'approved'
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/release.yml
+    with:
+      automatic: true
+      source_sha: ${{ inputs.source_sha }}
+      model_name: ${{ needs.train.outputs.model_name }}
+      model_version: ${{ needs.train.outputs.model_version }}
+      training_result: ${{ needs.train.outputs.handoff }}
+  checkpoint:
+    needs:
+    - plan
+    - train
+    - release
+    if: always() && inputs.automatic && (needs.plan.outputs.train == 'true' || needs.plan.outputs.reason == 'stale')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ needs.plan.outputs.base_sha }}
+      PLAN_REASON: ${{ needs.plan.outputs.reason }}
+      TRAIN_RESULT: ${{ needs.train.result }}
+      RELEASE_RESULT: ${{ needs.release.result }}
+      VALIDATION_STATUS: ${{ needs.train.outputs.validation_status }}
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ inputs.source_sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: true
+    - name: Record automatic decision watermark
+      run: python3 scripts/auto_mlops.py checkpoint
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: auto-mlops-checkpoint-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/auto-checkpoint.json
+        if-no-files-found: error
+        retention-days: 90
+    - name: Fail closed on incomplete automatic outcome
+      run: python3 scripts/auto_mlops.py assert-terminal
+env:
+  SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+  AUTOMATIC: ${{ inputs.automatic && 'true' || 'false' }}
+  AUTO_MLOPS_ENABLED: ${{ vars.AUTO_MLOPS_ENABLED }}
+  AUTO_MLOPS_BASELINE_SHA: ${{ vars.AUTO_MLOPS_BASELINE_SHA }}
+  EXPECTED_REPOSITORY_ID: ${{ vars.EXPECTED_REPOSITORY_ID }}
+  EXPECTED_OWNER_ID: ${{ vars.EXPECTED_OWNER_ID }}

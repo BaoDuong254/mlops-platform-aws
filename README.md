@@ -6,23 +6,28 @@ Nền tảng MLOps dự đoán **thời lượng chuyến NYC Yellow Taxi** từ
 
 ```mermaid
 flowchart LR
+    SRC["Training source/config trên main"] --> CI["Source CI"]
+    CI --> PLAN["Auto enabled / trusted / training changed"]
+    PLAN --> TRAIN["EKS Spot Training Job"]
     TLC["NYC TLC Parquet"] --> DATA["S3 datasets"]
-    DATA --> TRAIN["EKS Spot Training Job"]
-    TRAIN --> MLFLOW["MLflow Registry"]
+    DATA --> TRAIN
+    TRAIN --> MLFLOW["MLflow Gate / Registry"]
     MLFLOW --> DB["PostgreSQL PVC"]
     MLFLOW --> MODEL["S3 model artifacts"]
-    MLFLOW -->|approved version| CI["GitHub Actions + AWS OIDC"]
-    CI --> ECR["ECR image chứa model"]
-    CI -->|một release commit| GIT["GitOps repository"]
-    GIT --> ARGO["Argo CD"]
-    ARGO --> API["FastAPI trên EKS On-Demand"]
+    MLFLOW -->|exact approved version| REL["Release / OIDC role riêng"]
+    REL --> ECR["ECR immutable image"]
+    REL --> GIT["GitOps commit"]
+    REL --> LOAD["Bounded internal ALB traffic"]
+    GIT --> ARGO["Argo CD / Rollouts"]
+    ARGO --> API["Smoke / Canary / FastAPI"]
     ECR --> API
-    API --> HPA["Metrics Server + HPA"]
-    API --> PROM["Prometheus"]
+    LOAD --> API
+    API --> HPA["Metrics Server / HPA"]
+    API --> PROM["Prometheus / analysis"]
     PROM --> GRAF["Grafana"]
 ```
 
-Training dùng tháng 2025-01/02 cho train, 2025-03 validation và 2025-04 test. Validation gate chỉ chấp thuận candidate đủ điều kiện. Release workflow nhận **model name/version rõ ràng**, trực tiếp lấy approved model từ cloud Registry, kiểm tra bundle, build/push image và commit ECR digest. Argo CD tự triển khai; runner kiểm chứng API rồi mới xác nhận alias `champion`. Dispatch release **không tự train**. Cloud training dispatch riêng bằng `make train-run TRAIN_CONFIG=configs/training.yaml`. Image chứa model và feature contract nên request inference không cần gọi MLflow/S3.
+Training dùng tháng 2025-01/02 cho train, 2025-03 validation và 2025-04 test. Validation gate chỉ chấp thuận candidate đủ điều kiện. Release workflow nhận **model name/version rõ ràng**, trực tiếp lấy approved model từ cloud Registry, kiểm tra bundle, build/push image và commit ECR digest. Argo CD tự triển khai; runner kiểm chứng API rồi mới xác nhận alias `champion`. Sau khi bật automatic mode, push main có thay đổi training sẽ đi qua Source CI → Spot Training → approved decision → Release; rejected giữ champion. Dispatch bảo trì vẫn có qua `make train-run TRAIN_CONFIG=configs/training.yaml` và release explicit version. Image chứa model và feature contract nên request inference không cần gọi MLflow/S3.
 
 Terraform tách ba state: bootstrap state bucket (state local phải sao lưu riêng), persistent S3/ECR, và platform VPC/EKS/IAM/add-ons. Xóa platform không đồng nghĩa xóa persistent storage; PostgreSQL PVC cần backup trước khi teardown.
 
@@ -49,17 +54,17 @@ docs/_local/         ghi chú phát triển local, Git-ignored; phải backup ri
 
 ## Workflows chuẩn hóa
 
-Repository có ba workflows độc lập:
+Repository giữ ba workflows theo trách nhiệm, liên kết bằng `workflow_call` khi auto mode được bật:
 
 | Workflow | Trigger và trách nhiệm |
 | --- | --- |
-| `ci.yml` | Push/PR: bốn jobs Infrastructure, Training, Serving, GitOps; job Final CI status chỉ xanh khi tất cả thành công. PR CI không nhận AWS credentials. Tests tạo synthetic artifacts trong tmp, không skip khi máy chưa train. |
-| `train.yml` | Dispatch từ `main`: dedicated OIDC role → build/push training image theo digest → EKS Spot Job → validation gate → kiểm tra artifacts/metrics/Registry → báo approved/rejected. Không release hoặc đổi champion. |
-| `release.yml` | Dispatch từ `main` với model name/version rõ ràng: export approved model → bundle/image digest → một commit Deployment + Rollout smoke identity → canary → verify → champion. Candidate bị từ chối thì guarded Git revert. |
+| `ci.yml` | Push/PR: bốn module và Final CI status. Chỉ main push CI success, đúng repo/owner IDs và auto enabled mới gọi Training. PR CI không có AWS credentials. |
+| `train.yml` | Reusable từ CI hoặc manual main: fingerprint/checkpoint → dedicated training role → digest-pinned Spot Job → xác minh gate/Registry/artifacts/source. Chỉ automatic approved/READY mới gọi Release với exact version; manual chỉ train. |
+| `release.yml` | Reusable hoặc manual explicit name/version: revalidate approved model → bundle/image digest → bounded internal ALB traffic → GitOps/smoke/canary → verify → champion. Candidate rejected giữ guarded Git revert; không suy mọi failure đã rollback. |
 
-Training và release dùng chung concurrency group theo cluster để serialize CIDR changes; không hủy run đang chạy. Các run đang pending có thể bị GitHub thay thế bởi run pending mới hơn, không phải FIFO queue. Repository variables, IAM/RBAC setup và các giới hạn nằm ở [setup](docs/setup.md#9-github-actions-citrainingrelease).
+Automatic chain có khóa riêng; các jobs Training/Release dùng chung khóa mutation theo cluster để serialize CIDRs mà không deadlock. Không cancel run đang chạy; run pending có thể bị thay thế. Checkpoint giữ cumulative training changes, guard chặn stale SHA và GitOps-only không mở vòng train. Chi tiết ở [automated pipeline](docs/automated-pipeline.md).
 
-Source remediation đã được kiểm tra local/CI; các thay đổi mới về smoke identity, 5xx gate và cloud training chưa được tuyên bố đã kiểm chứng AWS end-to-end. Evidence 05/11 giữ nguyên ý nghĩa lịch sử: release rollback khi đó dùng 422; source hiện tại không dùng 4xx để reject candidate.
+**Mặc định auto tắt.** Cần Source CI mới xanh, RBAC traffic namespace được áp có kiểm soát, `AUTO_MLOPS_BASELINE_SHA` đã review và `AUTO_MLOPS_ENABLED=true` để bật. Không cần dispatch từng source update sau đó. [Hướng dẫn bật/tắt và recovery](docs/automated-pipeline.md). Source orchestration mới chỉ được kiểm chứng local/simulated; E2E16/11 là evidence lịch sử của training/release manual, không phải cloud verification của auto mode.
 
 ## Điều kiện trước khi bắt đầu
 
@@ -190,7 +195,7 @@ kubectl get nodeclaims
 | [4 — Canary & Rollback](docs/phases/phase-04.md) | Progressive delivery và rollback theo metric | Đã kiểm chứng dev (xem giới hạn) |
 | [5 — Drift & Retraining](docs/phases/phase-05.md) | Batch drift, alert và retraining có gate | Chưa triển khai |
 
-Training artifact local được ghi nhận có validation MAE **3,8372 phút** và test MAE **4,1301 phút** trên mỗi tập 100.000 dòng đã lấy mẫu. Cloud Registry có approved model version 1; GitHub Actions đã tạo digest-pinned image và Argo CD triển khai. Bài k6 gửi **55.398 requests, 0 HTTP failures**; HPA scale **1→3→1** Pods. [Evidence theo Phase](docs/evidence/) nêu nguồn số liệu và giới hạn kiểm chứng.
+Training artifact local được ghi nhận có validation MAE **3,8372 phút** và test MAE **4,1301 phút** trên mỗi tập 100.000 dòng đã lấy mẫu. E2E ngày16/11 đã ghi nhận model upgrade v1→v2, approved candidate và champion2 sau serving verification; đây là snapshot lịch sử, không phải đọc live state của source auto mới. Bài k6 gửi **55.398 requests, 0 HTTP failures**; HPA scale **1→3→1** Pods. [Evidence theo Phase](docs/evidence/) nêu nguồn số liệu và giới hạn kiểm chứng.
 
 ## Chi phí, cleanup và giới hạn
 

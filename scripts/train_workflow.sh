@@ -2,6 +2,7 @@
 # Main-only workflow: build one immutable image, execute one Spot Job, verify without release.
 set -Eeuo pipefail
 : "${GITHUB_RUN_ID:?}" "${GITHUB_RUN_ATTEMPT:?}" "${RUNNER_TEMP:?}" "${AWS_REGION:?}" "${DATA_BUCKET:?}"
+python3 scripts/workflow_guard.py train
 export TRAINING_CONFIG="${TRAINING_CONFIG:-configs/training.yaml}"
 uv run --locked python scripts/training_result.py validate-config --config "$TRAINING_CONFIG"
 account="$(aws sts get-caller-identity --query Account --output text)"
@@ -30,6 +31,7 @@ digest="$(aws ecr describe-images --repository-name "${repo##*/}" --image-ids "i
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'Missing ECR digest' >&2; exit 1; }
 export TRAINING_IMAGE="$repo@$digest"
 trap cleanup EXIT
+python3 scripts/workflow_guard.py train
 python3 scripts/m23-render.py deploy/platform/mlops/training-job.yaml.tpl | kubectl --request-timeout=30s create -f -
 # Reuse the existing bounded Job status/Spot retry monitor, not a second controller.
 source scripts/m23-common.sh
@@ -45,8 +47,10 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 [[ "$ready" == true ]] || { echo 'MLflow tunnel unavailable' >&2; exit 1; }
-uv run --locked python scripts/training_result.py verify --log "$RUNNER_TEMP/training.log" \
-  --tracking-uri http://127.0.0.1:15000 --output "$RUNNER_TEMP/training-result.json"
+model_name="$(uv run --locked python -c 'from training.tracking import load_tracking_config; from pathlib import Path; print(load_tracking_config(Path("configs/mlflow.yaml")).registered_model_name)')"
+uv run --locked python scripts/training_result.py verify --model-name "$model_name" --log "$RUNNER_TEMP/training.log" \
+  --tracking-uri http://127.0.0.1:15000 --output "$RUNNER_TEMP/training-result.json" --expected-source-sha "$SOURCE_SHA"
+python3 scripts/workflow_guard.py train
 {
   printf 'Training image: `%s`; Job: `%s`\n' "$TRAINING_IMAGE" "$job"
   cat "$RUNNER_TEMP/training-result.json"

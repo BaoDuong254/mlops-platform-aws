@@ -1,0 +1,59 @@
+# One isolated, bounded dev load Job. Apply deliberately before enabling automation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mlops-release-traffic
+  labels:
+    app.kubernetes.io/part-of: mlops-platform-aws
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canary-traffic
+  namespace: mlops-release-traffic
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: canary-traffic-budget
+  namespace: mlops-release-traffic
+spec:
+  hard:
+    count/jobs.batch: '1'
+    pods: '1'
+    requests.cpu: 100m
+    requests.memory: 128Mi
+    limits.cpu: 500m
+    limits.memory: 512Mi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-release-traffic
+  namespace: mlops-release-traffic
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, delete]
+  - apiGroups: ['']
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: ['']
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-release-traffic
+  namespace: mlops-release-traffic
+subjects:
+  - kind: Group
+    name: mlops-github-release
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: github-release-traffic
+  apiGroup: rbac.authorization.k8s.io
