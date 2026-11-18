@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -94,7 +95,21 @@ def workload_matches(expected: dict) -> bool:
     return live_state(expected) == "promoted"
 
 
-def wait_for_outcome(expected: dict, commit: str, timeout: int = 1800) -> str:
+def require_traffic(job: str | None) -> None:
+    if job is None:
+        return
+    if not re.fullmatch(r"m32-traffic-[0-9]+-[0-9]+", job):
+        raise ValueError("Invalid project traffic Job identity")
+    state = command_json("-n", "mlops-release-traffic", "get", "job", job)
+    status = state.get("status", {})
+    if status.get("failed", 0) or any(c.get("type") in {"Failed", "FailureTarget"} and c.get("status") == "True"
+                                      for c in status.get("conditions", [])):
+        raise RuntimeError("Load generation failed; this is not a candidate rejection")
+    if status.get("succeeded", 0) or not status.get("active", 0):
+        raise RuntimeError("Bounded traffic expired or stopped before release verification; no champion promotion")
+
+
+def wait_for_outcome(expected: dict, commit: str, timeout: int = 1800, traffic_job: str | None = None) -> str:
     """Block until the canary is promoted ("promoted") or rejected ("aborted")."""
     deadline = time.monotonic() + timeout
     last_error = None
@@ -105,6 +120,7 @@ def wait_for_outcome(expected: dict, commit: str, timeout: int = 1800) -> str:
             state = live_state(expected)
             if state == "aborted":
                 return "aborted"
+            require_traffic(traffic_job)
             if state == "promoted" and application_matches(commit):
                 return "promoted"
         except (subprocess.CalledProcessError, KeyError, ValueError) as error:
@@ -189,9 +205,10 @@ def assert_current_release(expected: dict, commit: str) -> None:
         raise RuntimeError("Release is no longer the desired, healthy GitOps revision")
 
 
-def promote(client: MlflowClient, expected: dict, commit: str) -> str:
+def promote(client: MlflowClient, expected: dict, commit: str, traffic_job: str | None = None) -> str:
     assert_current_release(expected, commit)
     verify_registry(client, expected)
+    require_traffic(traffic_job)
     try:
         current = client.get_model_version_by_alias(expected["model_name"], "champion")
     except MlflowException as error:
@@ -202,6 +219,7 @@ def promote(client: MlflowClient, expected: dict, commit: str) -> str:
         result = "already-promoted"
     else:
         assert_current_release(expected, commit)
+        require_traffic(traffic_job)
         client.set_registered_model_alias(expected["model_name"], "champion", expected["model_version"])
         result = "promoted"
     confirmed = client.get_model_version_by_alias(expected["model_name"], "champion")
@@ -224,6 +242,7 @@ def main() -> None:
     parser.add_argument("--previous", type=Path, help="Verified stable snapshot captured before the release")
     parser.add_argument("--wait-reverted", action="store_true",
                         help="Wait until --commit (a revert) is live and the Rollout is stable again")
+    parser.add_argument("--traffic-job", help="Require this bounded project traffic Job to remain active")
     args = parser.parse_args()
     expected = json.loads(args.expected.read_text(encoding="utf-8"))
     if args.wait_reverted:
@@ -233,7 +252,7 @@ def main() -> None:
         print(json.dumps({"gitops_commit": args.commit, "rollback": "stable-restored"}, sort_keys=True))
         return
     if args.wait_outcome:
-        outcome = wait_for_outcome(expected, args.commit)
+        outcome = wait_for_outcome(expected, args.commit, traffic_job=args.traffic_job)
         print(json.dumps({"gitops_commit": args.commit, "image": expected["image"],
                           "canary": outcome}, sort_keys=True))
         if outcome == "aborted":
@@ -247,7 +266,7 @@ def main() -> None:
     duration = verify_api(expected, args.inference_uri)
     client = MlflowClient(tracking_uri=args.mlflow_uri)
     verify_registry(client, expected)
-    result = promote(client, expected, args.commit)
+    result = promote(client, expected, args.commit, traffic_job=args.traffic_job)
     print(json.dumps({"release_id": expected["release_id"], "gitops_commit": args.commit,
                       "image": expected["image"], "model_version": expected["model_version"],
                       "prediction_minutes": duration, "champion": result}, sort_keys=True))

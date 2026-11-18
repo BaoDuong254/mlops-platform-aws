@@ -10,9 +10,15 @@ set -Eeuo pipefail
 
 mlflow_pid=''
 inference_pid=''
+traffic_state="$RUNNER_TEMP/canary-traffic.json"
+traffic_job=''
 cleanup() {
+  local result=$?
+  trap - EXIT
+  if ! python3 scripts/release_traffic.py stop --state "$traffic_state"; then result=1; fi
   if [[ -n "$inference_pid" ]]; then kill "$inference_pid" 2>/dev/null || true; wait "$inference_pid" 2>/dev/null || true; fi
   if [[ -n "$mlflow_pid" ]]; then kill "$mlflow_pid" 2>/dev/null || true; wait "$mlflow_pid" 2>/dev/null || true; fi
+  exit "$result"
 }
 trap cleanup EXIT
 
@@ -30,6 +36,7 @@ wait_tunnel() {
   return 1
 }
 
+python3 scripts/workflow_guard.py release
 release_id="m32-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 serving_sha="$(git rev-parse HEAD)"
 bundle="artifacts/releases/${MODEL_NAME}-v${MODEL_VERSION}"
@@ -46,8 +53,25 @@ mlflow_pid=$!
 wait_tunnel "$mlflow_pid" http://127.0.0.1:15000/health "$RUNNER_TEMP/m32-mlflow-tunnel.log"
 export MLFLOW_TRACKING_URI=http://127.0.0.1:15000
 
+if [[ "${AUTOMATIC:-false}" == true ]]; then
+  python3 - <<'CHECK'
+import json,os
+from pathlib import Path
+result=json.loads(os.environ["TRAINING_RESULT"])
+if (result.get("model_name"),result.get("model_version")) != (os.environ["MODEL_NAME"],os.environ["MODEL_VERSION"]):
+    raise ValueError("Release input differs from exact training decision")
+Path(os.environ["RUNNER_TEMP"],"approved-training-result.json").write_text(json.dumps(result))
+CHECK
+  uv run --locked python scripts/training_result.py verify-handoff \
+    --path "$RUNNER_TEMP/approved-training-result.json" --source-sha "$SOURCE_SHA" --tracking-uri "$MLFLOW_TRACKING_URI"
+fi
+
 uv run --locked python -m inference.export --tracking-uri "$MLFLOW_TRACKING_URI" \
   --model-name "$MODEL_NAME" --model-version "$MODEL_VERSION" --output "$bundle"
+if [[ "${AUTOMATIC:-false}" == true ]]; then
+  uv run --locked python scripts/training_result.py verify-bundle \
+    --path "$RUNNER_TEMP/approved-training-result.json" --source-sha "$SOURCE_SHA" --bundle "$bundle"
+fi
 uv run --locked python scripts/m32_gitops.py prepare --bundle "$bundle" \
   --release-id "$release_id" --serving-git-sha "$serving_sha" >/dev/null
 checksum="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["artifact_checksum"])' "$bundle/release.json")"
@@ -73,6 +97,10 @@ image="$repo@$digest"
 uv run --locked python scripts/m32_gitops.py render --bundle "$bundle" \
   --image "$image" --candidate-cpu "${CANARY_TEST_CPU:-off}" --expected-output "$expected" >/dev/null
 uv run --locked python scripts/m31-validate-manifest.py
+python3 scripts/workflow_guard.py release
+traffic_job="$(python3 scripts/release_traffic.py start --state "$traffic_state")"
+# Main can move while the internal ALB/load Pod starts. Never push a release from stale source.
+python3 scripts/workflow_guard.py release
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git add deploy/gitops/inference/deployment.yaml deploy/gitops/inference/rollout.yaml
@@ -96,7 +124,7 @@ fi
 # Argo Rollouts chạy canary (smoke, 10%, 50%) rồi tự promote hoặc abort. Exit 3 = canary bị từ chối.
 set +e
 uv run --locked python scripts/m32_verify.py --expected "$expected" --commit "$commit" \
-  --mlflow-uri "$MLFLOW_TRACKING_URI" --inference-uri http://127.0.0.1:18000 --wait-outcome
+  --mlflow-uri "$MLFLOW_TRACKING_URI" --inference-uri http://127.0.0.1:18000 --traffic-job "$traffic_job" --wait-outcome
 outcome=$?
 set -e
 if [[ "$outcome" -eq 3 ]]; then
@@ -126,6 +154,6 @@ kubectl -n mlops port-forward --address 127.0.0.1 service/inference-api 18000:80
 inference_pid=$!
 wait_tunnel "$inference_pid" http://127.0.0.1:18000/healthz "$RUNNER_TEMP/m32-inference-tunnel.log"
 uv run --locked python scripts/m32_verify.py --expected "$expected" --commit "$commit" \
-  --mlflow-uri "$MLFLOW_TRACKING_URI" --inference-uri http://127.0.0.1:18000 \
+  --mlflow-uri "$MLFLOW_TRACKING_URI" --inference-uri http://127.0.0.1:18000 --traffic-job "$traffic_job" \
   | tee artifacts/m32-result.json
 cat artifacts/m32-result.json >> "$GITHUB_STEP_SUMMARY"

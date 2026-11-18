@@ -1,6 +1,8 @@
 """Workflow separation, fail-closed trust, serialization and pre-traffic identity."""
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,27 +15,27 @@ def test_exactly_three_workflows_and_no_pr_credentials():
     files={p.name for p in (ROOT/'.github/workflows').glob('*.yml')}
     assert files=={'ci.yml','train.yml','release.yml'}
     ci=yaml.safe_load((ROOT/'.github/workflows/ci.yml').read_text())
-    assert set(ci['jobs'])=={'infrastructure','training','serving','gitops','ci'}
+    assert set(ci['jobs'])=={'infrastructure','training','serving','gitops','ci','auto_mlops'}
     assert ci['permissions']=={'contents':'read'}
     assert set(ci['on'])=={'push','pull_request'}
     assert 'always()' in ci['jobs']['ci']['if']
     for job in ci['jobs'].values():
-        assert not any('configure-aws-credentials' in x.get('uses','') for x in job['steps'])
+        assert not any('configure-aws-credentials' in x.get('uses','') for x in job.get('steps', []))
 
 
 def test_cloud_workflows_serialize_and_use_distinct_roles_main_only():
     w={key:yaml.safe_load((ROOT/f'.github/workflows/{key}.yml').read_text()) for key in ('train','release')}
-    assert w['train']['concurrency']==w['release']['concurrency']
-    assert w['train']['concurrency']['cancel-in-progress'] is False
+    assert w['train']['jobs']['train']['concurrency']==w['release']['jobs']['release']['concurrency']
+    assert w['train']['jobs']['train']['concurrency']['cancel-in-progress'] is False
     for name,workflow in w.items():
-        assert set(workflow['on'])=={'workflow_dispatch'}
+        assert set(workflow['on'])=={'workflow_dispatch', 'workflow_call'}
         job=workflow['jobs'][name]
         assert 'refs/heads/main' in job['if']
-        auth=next(x for x in job['steps'] if 'configure-aws-credentials' in x.get('uses',''))
+        auth=next(x for x in job.get('steps', []) if 'configure-aws-credentials' in x.get('uses',''))
         assert auth['with']['role-to-assume']==('${{ vars.AWS_ROLE_TRAIN }}' if name=='train' else '${{ vars.AWS_ROLE_RELEASE }}')
-        close=next(x for x in job['steps'] if 'close --state-file' in x.get('run',''))
+        close=next(x for x in job.get('steps', []) if 'close --state-file' in x.get('run',''))
         assert 'always()' in close['if']
-        assert workflow['permissions']['contents']==('write' if name=='release' else 'read')
+        assert job['permissions']['contents']==('write' if name=='release' else 'read')
 
 
 def smoke_script():
@@ -102,3 +104,30 @@ def test_adoption_accepts_zero_replica_template_only_with_healthy_rollout(monkey
     adoption.check()
     rollout['status']['phase']='Degraded'
     with pytest.raises(ValueError,match='Rollout'):adoption.check()
+
+
+@pytest.mark.parametrize("workflow,job", [("train", "train"), ("release", "release")])
+@pytest.mark.parametrize("identity,sts_exit,expected_exit", [
+    ("111111111111", 0, 0),
+    ("222222222222", 0, 1),
+    ("", 42, 42),
+])
+def test_account_guard_fails_closed_before_eks_mutation(tmp_path, workflow, job,
+                                                     identity, sts_exit, expected_exit):
+    document = yaml.safe_load((ROOT / ".github/workflows" / f"{workflow}.yml").read_text())
+    steps = document["jobs"][job]["steps"]
+    auth_index = next(i for i, step in enumerate(steps)
+                      if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@"))
+    guard_index = next(i for i, step in enumerate(steps)
+                       if step.get("name") == "Verify authenticated AWS account")
+    open_index = next(i for i, step in enumerate(steps)
+                      if step.get("name") == "Admit runner IPv4 only")
+    assert auth_index < guard_index < open_index
+    assert "allowed-account-ids" not in steps[auth_index].get("with", {})
+    aws = tmp_path / "aws"
+    aws.write_text(f"#!/bin/sh\nprintf '%s\\n' '{identity}'\nexit {sts_exit}\n")
+    aws.chmod(0o700)
+    env = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}", AWS_ACCOUNT_ID="111111111111")
+    result = subprocess.run(["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c",
+                             steps[guard_index]["run"]], env=env, capture_output=True, text=True)
+    assert result.returncode == expected_exit

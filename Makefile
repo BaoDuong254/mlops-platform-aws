@@ -389,7 +389,7 @@ monitoring-cleanup: m33-cleanup
 ci-infrastructure:
 	bash scripts/source_checks.sh infrastructure
 ci-training:
-	$(UV) run --locked pytest -q tests/unit/test_features.py tests/unit/test_gate.py tests/unit/test_m23_cloud.py tests/integration/test_training_pipeline.py tests/integration/test_mlflow_tracking.py tests/unit/test_training_workflow.py
+	$(UV) run --locked pytest -q tests/unit/test_features.py tests/unit/test_gate.py tests/unit/test_m23_cloud.py tests/integration/test_training_pipeline.py tests/integration/test_mlflow_tracking.py tests/unit/test_training_workflow.py tests/unit/test_auto_mlops.py
 ci-serving:
 	$(UV) run --locked pytest -q tests/unit/test_inference.py tests/integration/test_inference_export.py tests/integration/test_m32_bundle.py
 ci-gitops:
@@ -400,3 +400,7 @@ train-run:
 	gh workflow run train.yml --ref main -f training_config="$(TRAIN_CONFIG)"
 canary-platform-cleanup:
 	bash scripts/canary_cleanup.sh
+
+.PHONY: auto-pipeline-test
+auto-pipeline-test:
+	$(UV) run --locked pytest -q tests/unit/test_auto_mlops.py tests/unit/test_workflows.py

@@ -42,3 +42,7 @@ Nhánh từ chối của release workflow mới được thử bằng request kh
 ## 10. Thay đổi chất lượng sau evidence 05/11
 
 Source hiện hành chuẩn hóa `ci.yml`/`train.yml`/`release.yml`; smoke so exact candidate identity trước traffic, 4xx không còn kích hoạt error gate, rollback xác minh previous stable digest/Ready Pods, alias version được chuẩn hóa int/str. Release vẫn một commit nhưng sửa Deployment và Rollout expected identity. Tùy chọn CPU fault riêng candidate mặc định tắt dành cho E2E tiếp theo. Các thay đổi này có regression tests local/CI, chưa được coi là đã chạy lại toàn bộ bộ thí nghiệm AWS Phase 1–4. Các số liệu/422 rollback trong evidence là lịch sử của source cũ.
+
+## Bổ sung source: orchestration tự động
+
+Source hiện bổ sung reusable CI→Training→Release và bounded internal ALB traffic; manual dispatch vẫn giữ. Auto mode mặc định tắt. Chi tiết/trạng thái verification mới ở [automated pipeline](../automated-pipeline.md); các kết quả E2E trong tài liệu/evidence trước đây là lịch sử, không nghiệm thu auto mode mới. Metric thresholds và rollback boundaries hiện hữu được giữ nguyên.

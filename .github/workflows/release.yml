@@ -17,12 +17,26 @@ name: Approved Model Release
         options:
         - 'off'
         - 100m
+  workflow_call:
+    inputs:
+      automatic:
+        type: boolean
+        default: false
+      source_sha:
+        required: true
+        type: string
+      model_name:
+        required: true
+        type: string
+      model_version:
+        required: true
+        type: string
+      training_result:
+        required: true
+        type: string
 permissions:
   contents: write
   id-token: write
-concurrency:
-  group: eks-${{ vars.EKS_CLUSTER_NAME || 'mlops-aws-dev' }}-mutation
-  cancel-in-progress: false
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
@@ -37,11 +51,15 @@ jobs:
       MODEL_NAME: ${{ inputs.model_name }}
       MODEL_VERSION: ${{ inputs.model_version }}
       INFERENCE_ECR_REPOSITORY: ${{ vars.INFERENCE_ECR_REPOSITORY }}
-      CANARY_TEST_CPU: ${{ inputs.canary_test_cpu }}
+      CANARY_TEST_CPU: ${{ inputs.canary_test_cpu || 'off' }}
+      SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+      AUTOMATIC: ${{ inputs.automatic && 'true' || 'false' }}
+      AUTO_MLOPS_ENABLED: ${{ vars.AUTO_MLOPS_ENABLED }}
+      TRAINING_RESULT: ${{ inputs.training_result }}
     steps:
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
-        ref: main
+        ref: ${{ inputs.source_sha || github.sha }}
         fetch-depth: 0
         persist-credentials: true
     - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -56,16 +74,28 @@ jobs:
       run: python3 scripts/workflow_guard.py release
     - name: Source regression checks
       run: make release-test
+    - name: Validate exact automatic model handoff before credentials
+      if: inputs.automatic
+      run: uv run --locked python scripts/training_result.py validate-input --source-sha "$SOURCE_SHA"
     - name: Assume dedicated release role with OIDC
       uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
       with:
         role-to-assume: ${{ vars.AWS_ROLE_RELEASE }}
         aws-region: ${{ env.AWS_REGION }}
-        allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+    - name: Verify authenticated AWS account
+      run: |
+        actual_account="$(aws sts get-caller-identity --query Account --output text)"
+        if [[ "$actual_account" != "$AWS_ACCOUNT_ID" ]]; then
+          echo '::error::Authenticated AWS account differs from the configured project account'
+          exit 1
+        fi
     - name: Admit runner IPv4 only
       run: python3 scripts/m32_eks_cidr.py open --state-file "$RUNNER_TEMP/eks-cidrs.json"
     - name: Export, build, deploy, verify and promote one release
       run: bash scripts/m32_release.sh
+    - name: Cleanup bounded canary traffic
+      if: ${{ always() }}
+      run: python3 scripts/release_traffic.py stop --state "$RUNNER_TEMP/canary-traffic.json"
     - name: Restore exact original EKS CIDRs
       if: ${{ always() }}
       run: python3 scripts/m32_eks_cidr.py close --state-file "$RUNNER_TEMP/eks-cidrs.json"
@@ -74,8 +104,15 @@ jobs:
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
         name: release-result-${{ github.run_id }}-${{ github.run_attempt }}
-        path: 'artifacts/m32-result.json
-
-          artifacts/m32-expected.json'
+        path: |-
+          artifacts/m32-result.json
+          artifacts/m32-expected.json
+          ${{ runner.temp }}/canary-traffic.log
         if-no-files-found: ignore
         retention-days: 14
+    permissions:
+      contents: write
+      id-token: write
+    concurrency:
+      group: eks-${{ vars.EKS_CLUSTER_NAME || 'mlops-aws-dev' }}-mutation
+      cancel-in-progress: false

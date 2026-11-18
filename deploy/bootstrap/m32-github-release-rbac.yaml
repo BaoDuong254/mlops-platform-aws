@@ -4,6 +4,10 @@ metadata:
   name: m32-github-release
   namespace: mlops
 rules:
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    resourceNames: [inference-api]
+    verbs: [get]
   - apiGroups: [apps]
     resources: [deployments]
     resourceNames: [inference-api]
