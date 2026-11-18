@@ -64,7 +64,7 @@ Repository giữ ba workflows theo trách nhiệm, liên kết bằng `workflow_
 
 Automatic chain có khóa riêng; các jobs Training/Release dùng chung khóa mutation theo cluster để serialize CIDRs mà không deadlock. Không cancel run đang chạy; run pending có thể bị thay thế. Checkpoint giữ cumulative training changes, guard chặn stale SHA và GitOps-only không mở vòng train. Chi tiết ở [automated pipeline](docs/automated-pipeline.md).
 
-**Mặc định auto tắt.** Cần Source CI mới xanh, RBAC traffic namespace được áp có kiểm soát, `AUTO_MLOPS_BASELINE_SHA` đã review và `AUTO_MLOPS_ENABLED=true` để bật. Không cần dispatch từng source update sau đó. [Hướng dẫn bật/tắt và recovery](docs/automated-pipeline.md). Source orchestration mới chỉ được kiểm chứng local/simulated; E2E16/11 là evidence lịch sử của training/release manual, không phải cloud verification của auto mode.
+**Mặc định auto tắt.** Cần Source CI mới xanh, RBAC traffic namespace được áp có kiểm soát, `AUTO_MLOPS_BASELINE_SHA` đã review và `AUTO_MLOPS_ENABLED=true` để bật. Không cần dispatch từng source update sau đó. [Hướng dẫn bật/tắt và recovery](docs/automated-pipeline.md). Happy path automatic đã được kiểm chứng ngày **18/11/2026**, [run 44220667678](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44220667678): CI → Spot Training → Approved v3 → Release → canary → verified champion v3 và cleanup. Các nhánh rejected/rollback của orchestration mới chưa chạy cloud lại; E2E16/11 vẫn là lịch sử của pipeline manual.
 
 ## Điều kiện trước khi bắt đầu
 
