@@ -1,6 +1,6 @@
 # CI → Training → Release tự động
 
-Source triển khai pipeline tự động bằng ba workflows hiện có. **Automatic mode mặc định tắt** khi repository variable chưa đặt hoặc khác chuỗi `true`. Cơ chế mới được kiểm tra local/simulated; chưa chạy GitHub Actions/OIDC/EKS end-to-end với source này. Evidence E2E16/11/2026 thuộc pipeline manual trước đó, không thay thế verification của orchestration mới.
+Source triển khai pipeline tự động bằng ba workflows hiện có. **Automatic mode mặc định tắt** khi repository variable chưa đặt hoặc khác chuỗi `true`. Happy path đã được kiểm chứng trên GitHub/AWS ngày **18/11/2026** bằng [Source CI run 44220667678](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44220667678): main push → CI → EKS Spot Training → gate Approved v3 → reusable Release → GitOps/canary → verified champion v3. Repository này đã bật auto sau bootstrap; repository khác vẫn phải cấu hình và chủ động bật. Evidence E2E16/11/2026 thuộc pipeline manual trước đó, không thay thế verification của orchestration mới.
 
 ## Luồng và trách nhiệm
 
@@ -94,11 +94,11 @@ Job `m32-traffic-<run>-<attempt>` trong namespace **`mlops-release-traffic`** d�
 - Job failed/expired/mất API thì host fail/timeout đúng loại, không tự coi là candidate rejected/rollback. Thiếu request/NaN vẫn dùng AnalysisTemplate hiện hữu và không được host promote champion. Argo Rollouts là controller độc lập: host failure không phải transaction đảo mọi thay đổi runtime nếu controller đã promote trước đó; phải đối chiếu trạng thái.
 - Release thường kết thúc trước600s, nên logs có thể chỉ là cửa sổ partial, không có full-duration summary; không suy ra đạt40RPS từ Job active. EXIT trap và step `always()` cùng cleanup exact run-owned Job, thu logs; CIDR restore vẫn chạy tiếp kể cả cleanup failure. Runner chết hoàn toàn cần TTL/deadline và runbook kiểm tra CIDRs. Không hứa cleanup chắc chắn khi runner/API mất hoàn toàn.
 
-Không cần người vận hành tạo k6 Job mỗi release sau khi bootstrap quyền một lần. Đã kiểm tra script bằng Docker `k6 inspect --network none`; **chưa chạy cloud load bằng source mới**. Giới hạn503/selector churn trong Post-E2E Review chưa được sửa bằng cơ chế này.
+Không cần người vận hành tạo k6 Job mỗi release sau khi bootstrap quyền một lần. Ngoài offline inspect, [run 44220667678](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44220667678) đã tự tạo traffic Job và kiểm chứng smoke, ALB weights 10% → 50% → promotion, metric gates và cleanup. Tải được dừng sau release, nên không coi đây là bài thử đủ 600 giây hoặc benchmark throughput. Giới hạn503/selector churn trong Post-E2E Review chưa được sửa bằng cơ chế này.
 
 ## Bật/tắt và điều kiện trước khi bật
 
-Source bàn giao không bật repository variable. Các lệnh sau là **bước triển khai tương lai có cloud mutation**, chưa chạy trong lần phát triển này:
+Đây là quy trình bật cho môi trường mới, có cloud mutation. Repository hiện tại đã hoàn tất bootstrap và bật auto trong lần verification 18/11/2026; không apply hoặc reset baseline máy móc chỉ vì đọc hướng dẫn:
 
 1. Review/commit/push source theo quy trình Git của repository; để `AUTO_MLOPS_ENABLED=false` hoặc unset. Source CI phải xanh với source mới.
 2. Xác nhận cluster/Registry/Argo/Prometheus/ALB đang hoạt động; IAM training/release và customized OIDC main subject đúng. GitHub token phải có quyền commit/revert bình thường theo branch policy; không bypass protection.
@@ -128,4 +128,10 @@ Tắt bằng `AUTO_MLOPS_ENABLED=false`. CI và dispatch manual vẫn hoạt đ�
 | Missing metrics / generator failure / timeout / network / verification failure | Fail-closed ở host; không khẳng định đã auto rollback. Không promote bằng tay để che lỗi. |
 | Workflow fail sau verification/cleanup | Có thể champion đã được promote hợp lệ trước lỗi cleanup; đọc result/runtime, không suy ra champion vẫn cũ chỉ từ run Failure. |
 
-Chưa nghiệm thu source mới trên GitHub/AWS. Kế hoạch verification cần phê duyệt riêng: CI thật khi auto off; kiểm dedicated RBAC; một rejected training rồi một approved candidate/release có budget; theo dõi đủ traffic, Argo/ALB/Registry; kiểm cleanup/CIDR cuối. Không suy ra cloud pass từ tests synthetic hoặc evidence16/11.
+## Phạm vi đã kiểm chứng ngày 18/11/2026
+
+[Run 44220667678](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44220667678) nhận source `d97360738986f7cd0ffaa2290a5c8f4ecbe95171` sau PR #7. Candidate tăng capacity lên 127 leaves/1.500 trees, giữ nguyên dataset/split/seed và gate 1%. Validation MAE **3,6445432012** so với champion v2 **3,6949471626**, cải thiện **1,3641%**; MLflow cấp version **3**, run `363714d6a7634ebbb177026f93b6e7f1`.
+
+Training/Release dùng OIDC roles riêng. Workflow truyền exact v3, xác minh provenance/checksums, tạo image digest immutable và GitOps commit `cb84bcbab54db0e6cf9f3238315f6ba68fac9a96`. Smoke và background analysis Successful, ALB weights đã được đọc thực tế ở 10% và 50%. Sau serving verification, champion chuyển 2→3; checkpoint `completed`. Readback cuối xác nhận Argo Synced/Healthy, không còn training/traffic Job của trial; 4 CIDRs và hash khớp trước chạy.
+
+Đây là **happy-path automatic E2E**, không phải chạy lại toàn bộ Phase 1–4. Không tạo rejected training hoặc fault injection mới: các nhánh rejected/abort/guarded revert, timeout và terminal Inconclusive của orchestration mới vẫn cần phân biệt local regression với cloud verification. Một lượt metric Inconclusive lúc chưa đủ mẫu đã hồi phục khi có dữ liệu; không phải thử nghiệm terminal Inconclusive. Các giới hạn 502/503 lịch sử, HA, dataset provenance và rollback boundaries vẫn giữ nguyên.

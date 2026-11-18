@@ -31,4 +31,4 @@ Release runner phụ thuộc EKS public API `/32` tạm thời; cleanup bị gi�
 
 ## Bổ sung source: orchestration tự động
 
-Source hiện bổ sung reusable CI→Training→Release và bounded internal ALB traffic; manual dispatch vẫn giữ. Auto mode mặc định tắt. Chi tiết/trạng thái verification mới ở [automated pipeline](../automated-pipeline.md); các kết quả E2E trong tài liệu/evidence trước đây là lịch sử, không nghiệm thu auto mode mới. Metric thresholds và rollback boundaries hiện hữu được giữ nguyên.
+Source hiện bổ sung reusable CI→Training→Release và bounded internal ALB traffic; manual dispatch vẫn giữ. Auto mode mặc định tắt. Chi tiết/trạng thái verification mới ở [automated pipeline](../automated-pipeline.md); các kết quả E2E trước đây vẫn là lịch sử. Happy path auto đã được kiểm chứng riêng ngày 18/11/2026 ([run 44220667678](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44220667678)), nhưng không thay thế toàn bộ thí nghiệm Phase 1–4 hoặc kiểm chứng mới các nhánh rollback. Metric thresholds và rollback boundaries hiện hữu được giữ nguyên.
