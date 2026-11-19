@@ -1,0 +1,38 @@
+% Giữ bố cục, cỡ logo, khung và cấp chữ của trang bìa Report/main.tex.
+\begin{titlepage}
+\setstretch{1.5}
+\thispagestyle{empty}
+\AddToShipoutPictureBG*{\begin{tikzpicture}[remember picture,overlay]
+\draw[line width=3pt] ($(current page.north west)+(1.5cm,-2cm)$) rectangle ($(current page.south east)+(-1.5cm,2cm)$);
+\draw[line width=1.9pt] ($(current page.north west)+(1.7cm,-2.2cm)$) rectangle ($(current page.south east)+(-1.7cm,2.2cm)$);
+\end{tikzpicture}}
+\begin{center}
+{\Large ĐẠI HỌC QUỐC GIA THÀNH PHỐ HỒ CHÍ MINH}\\
+{\Large TRƯỜNG ĐẠI HỌC BÁCH KHOA}\\
+\textbf{\Large KHOA KHOA HỌC VÀ KỸ THUẬT MÁY TÍNH}
+\end{center}
+\vspace{0.7cm}
+\begin{center}
+\includegraphics[scale=1]{Pictures/hcmut.png}
+\end{center}
+\vspace{0.8cm}
+\begin{center}
+\textbf{\LARGE BÁO CÁO MÔN HỌC}\\[0.35cm]
+{\color{blue}\hrule\vspace{0.5cm}
+\textbf{\LARGE\ReportTitle}\\[0.5cm]
+\hrule}
+\vspace{0.8cm}
+{\setstretch{1.0}\large
+\renewcommand{\arraystretch}{1}
+\makebox[\linewidth][l]{\begin{tabular}{@{}>{\raggedleft\arraybackslash}p{70mm}@{\hspace{12mm}}p{48mm}@{\hspace{6mm}}p{22mm}@{}}
+Giảng viên hướng dẫn: & \ReportLecturer & \\[0.25cm]
+Lớp: & \ReportClass & \\[0.25cm]
+Nhóm: & \ReportGroup & \\[0.25cm]
+\ReportStudents
+\end{tabular}}}
+\end{center}
+\vspace{0.8cm}
+\begin{center}
+\fontsize{12}{14}\selectfont THÀNH PHỐ HỒ CHÍ MINH -- \ReportDate
+\end{center}
+\end{titlepage}

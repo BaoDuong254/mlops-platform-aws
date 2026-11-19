@@ -1,0 +1,50 @@
+{
+  "headings": 50,
+  "paragraphs": 147,
+  "table_cells": 169,
+  "evidence_captions": 9,
+  "figure_count": 12,
+  "figure_pdf_pages": {
+    "2.1": 10,
+    "2.2": 12,
+    "3.1": 15,
+    "4.1": 21,
+    "4.2": 22,
+    "4.3": 23,
+    "4.4": 24,
+    "4.5": 25,
+    "4.6": 26,
+    "4.7": 28,
+    "4.8": 29,
+    "4.9": 31
+  },
+  "grafana_mapping": "PASS",
+  "historical_notes": 3,
+  "pages": 34,
+  "roman_chapters": true,
+  "grid_tables": 12,
+  "rotated_pages": 0,
+  "diagrams_from_images": true,
+  "figure_table_lists": false,
+  "blank_pages": [],
+  "bundled_font": "Computer Modern Unicode",
+  "network_figure_in_section_311": true,
+  "figure_lead_in_text_removed": true,
+  "source_sha256": "c9058259af066b9581e046f4d5a85a4e3f0e26b38a3359d177dbcab77aa8c8b6",
+  "pdf_sha256": "5a9ab3cb48f6dd23cb690d1ff8d3d231ab47280c4f32c928825f8bef4b7199a7",
+  "status": "PASS",
+  "visual_review": {
+    "pdf_pages": [
+      27,
+      28,
+      29
+    ],
+    "checks": [
+      "Successful uses img_5.png",
+      "Git revert and failed dashboard share Figure 4.7",
+      "No cropping of evidence content or overlap",
+      "Historical Grafana notes retained"
+    ],
+    "status": "PASS"
+  }
+}

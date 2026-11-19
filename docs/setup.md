@@ -177,7 +177,7 @@ Chuẩn bị mỗi terminal mới: `export AWS_PROFILE=mlops-dev AWS_REGION=ap-s
 3. **RBAC cho runners:** `kubectl apply -f deploy/bootstrap/m32-github-release-rbac.yaml` và `kubectl apply -f deploy/bootstrap/github-training-rbac.yaml`. Trên cluster mới Role chưa tồn tại cho tới khi áp file này; bản hiện tại thêm quyền đọc `rollouts` và `analysisruns`.
 4. **Application:** `kubectl apply -f deploy/argocd/inference-application-automated.yaml` trỏ về `main`. Việc này đặt lại `targetRevision`; nếu template Pod khác bản đang chạy thì Rollouts mở một canary, nên bật tải trước (bước 5).
 5. **Tải và quan sát:** `make monitoring-load-test M33_TARGET=alb M33_VUS=20 M33_RATE=40 M33_DURATION_SECONDS=900` (tải theo tốc độ cố định vào ALB internal; gate cần traffic, không có thì `canary-request-rate` inconclusive và Rollout dừng chờ), `make canary-status`, `make canary-split M42_WINDOW=45s`.
-6. **Release thật:** nếu thư mục có nhiều remote, `gh repo set-default HaiXon231/mlops-platform-aws` trước; rồi `make release-run M31_MODEL_NAME=<name> M31_MODEL_VERSION=<version>`. EKS public CIDR phải là các `/32`; workflow từ chối `0.0.0.0/0`, và `terraform apply` ghi đè `0.0.0.0/0` đặt tay. Bật tải k6 khi commit `m32: release ... by digest` xuất hiện trên `main`.
+6. **Release thật:** nếu thư mục có nhiều remote, `gh repo set-default HaiXon231/mlops-platform-aws` trước; rồi `make release-run M31_MODEL_NAME=<name> M31_MODEL_VERSION=<version>`. EKS public CIDR phải là các `/32`; workflow từ chối `0.0.0.0/0`, và `terraform apply` ghi đè `0.0.0.0/0` đặt tay. Release workflow hiện tự quản lý bounded traffic Job; áp `deploy/bootstrap/release-traffic-rbac.yaml` cùng RBAC cập nhật trước. Không tạo thêm load thủ công đồng thời. Tải ngoài workflow ở bước5 chỉ dành bootstrap/thay đổi GitOps trực tiếp.
 7. **Dọn dẹp Phase 4 (thứ tự bắt buộc).** Application `inference-api` không có finalizer, nên xóa nó **không** xóa Ingress hay ALB; Ingress phải bị xóa trong lúc LB Controller còn chạy thì ALB mới được dọn. ALB còn tồn tại giữ ENI và security group nên VPC không xóa được.
 
    ```bash
@@ -197,7 +197,7 @@ Source CI chạy không cần AWS credentials, kể cả fork PR. Chạy tương
 
 Terraform giữ release role address cũ và thêm training role riêng cùng EKS Access Entry group `mlops-github-training`. Đặt `github_oidc_subject` đúng subject **main branch** của repository; tài khoản dùng immutable subjects có thể khác subject GitHub mặc định. Không tạo OIDC provider thứ hai nếu account đã có provider; trên account mới, owner cần bootstrap provider GitHub một lần trước platform apply. Không chuyển trust sang wildcard mọi branch.
 
-Sau platform apply, áp dụng hai namespace RBAC files: `deploy/bootstrap/m32-github-release-rbac.yaml` và `deploy/bootstrap/github-training-rbac.yaml`. Cấu hình GitHub repository Variables (không phải secrets):
+Sau platform apply, áp dụng các namespace RBAC files: `deploy/bootstrap/m32-github-release-rbac.yaml`, `deploy/bootstrap/github-training-rbac.yaml` và `deploy/bootstrap/release-traffic-rbac.yaml` (namespace traffic cô lập/quota). Cấu hình GitHub repository Variables (không phải secrets):
 
 | Variable | Giá trị |
 | --- | --- |
@@ -214,3 +214,16 @@ Sau platform apply, áp dụng hai namespace RBAC files: `deploy/bootstrap/m32-g
 Cả hai workflows serialize endpoint updates bằng chung concurrency group; cleanup always() khôi phục baseline CIDRs. Runner bị kill/cancel đột ngột vẫn có thể không cleanup; đối chiếu baseline trong run summary, giữ public/private endpoint modes và các admin /32. Không dùng `0.0.0.0/0`. Branch protection chặn commit/revert phải xử lý theo quy trình Git được phép; workflow không bypass hoặc force push.
 
 Nếu cluster đã absent, bootstrap platform/MLflow từ backup trước dispatch; chỉ cài IAM roles không tạo EKS Access Entries/RBAC hoặc phục hồi Registry. Các outputs/state/backup keys cần kiểm tra lại, không dùng snapshot cũ làm live state.
+
+### Automatic mode — bước cấu hình bổ sung
+
+Source mới giữ ba workflows và manual dispatch, thêm reusable CI→Training→Release. Xem [automated-pipeline.md](automated-pipeline.md) trước khi bật. Mặc định không có automatic cloud job; chưa apply namespace/RBAC hoặc chạy cloud verification trong lần phát triển source này.
+
+| Variable mới | Ý nghĩa |
+|---|---|
+| `AUTO_MLOPS_ENABLED` | Unset/`false` tắt; chỉ chuỗi`true` bật auto cho trusted main push sau CI success |
+| `AUTO_MLOPS_BASELINE_SHA` | Full40hex SHA main có training inputs đã review/evaluate; baseline ban đầu và acknowledgment sau maintenance reconciliation |
+
+Auto config nằm trong source`ci.yml`, mặc định`configs/training.yaml`. Trước khi bật: merge source/CI xanh với auto off; áp hai release RBAC manifests ở trên khi được phép; kiểm dedicated identities, quota/capacity, Registry/Argo/ALB/Prometheus và quyền bot commit/revert theo branch protection. Không mở IAM trust mới hoặc bypass protection. Sau khi bật, thay đổi training trên main tự train; approved mới release đúng version, rejected giữ champion. Không cần dispatch từng lần.
+
+Không coi branch Source CI xanh là whole cloud pipeline đã thành công: Final CI status độc lập; phải xem Automatic MLOps/terminal checkpoint và release result. Shared mutation lock vẫn serialize manual/auto CIDRs. Không cancel run đang chạy chỉ để nhường run mới; xử lý blocked/stale theo runbook.

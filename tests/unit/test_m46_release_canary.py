@@ -88,7 +88,7 @@ def test_wait_for_outcome_refuses_when_main_moves(monkeypatch):
 def test_cli_exits_with_code_three_for_an_aborted_canary(monkeypatch, tmp_path, capsys):
     expected = tmp_path / "expected.json"
     expected.write_text('{"image": "i", "release_id": "r"}')
-    monkeypatch.setattr(verify, "wait_for_outcome", lambda release, commit: "aborted")
+    monkeypatch.setattr(verify, "wait_for_outcome", lambda release, commit, **kwargs: "aborted")
     monkeypatch.setattr("sys.argv", ["m32_verify.py", "--expected", str(expected), "--commit", "c",
                                       "--mlflow-uri", "http://x", "--inference-uri", "http://y", "--wait-outcome"])
     with pytest.raises(SystemExit) as stop:

@@ -1,0 +1,330 @@
+{
+  "png_count": 27,
+  "images": [
+    {
+      "index": 1,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-17 21-24-24.png",
+      "size": [
+        1702,
+        977
+      ],
+      "sha256": "35b9e737b41147fa7a85c88e81877cbe95624d8c6972a9e066f20804fa86d65d",
+      "figure": "Hình 2.1",
+      "review": "Kiến trúc gồm S3, EKS Spot Job, MLflow/PostgreSQL, Release/ECR/GitOps, Argo CD/Rollouts, ALB/FastAPI và monitoring; có icon AWS và logo công nghệ.",
+      "report_file": "Pictures/architecture.png"
+    },
+    {
+      "index": 2,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-18 14-40-38.png",
+      "size": [
+        1920,
+        1200
+      ],
+      "sha256": "a5b691b4d9a142a8109f81c9c56f9496470d0a42134664c4992fed90dd295f51",
+      "figure": null,
+      "review": "Argo CD Healthy/Synced với cây tài nguyên ở mức zoom nhỏ; dùng ảnh 12-35-12 rõ hơn cho H05."
+    },
+    {
+      "index": 3,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-18 16-06-08.png",
+      "size": [
+        1920,
+        1200
+      ],
+      "sha256": "d12b9ed57fc528a3a2dabac1e4172d4e6a5d92bc109b27634ce196089d4e5e3d",
+      "figure": null,
+      "review": "Dashboard inference trước đây; không dùng thay cho ba ảnh historical evidence được chỉ định."
+    },
+    {
+      "index": 4,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-28-34.png",
+      "size": [
+        1831,
+        1110
+      ],
+      "sha256": "b6c198b44992f564c7a3013ed78bfb529bddba24e0fe9123a6cb4f82273edb96",
+      "figure": "H01",
+      "review": "Namespace mlops: inference-api, MLflow và PostgreSQL Running; ba smoke jobs Completed.",
+      "report_file": "Pictures/h01-workloads.png"
+    },
+    {
+      "index": 5,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-35-12.png",
+      "size": [
+        1920,
+        1200
+      ],
+      "sha256": "4b292d62e047110f674964ded3568a193cefdbf2434e20e68fa098f3c4fd3a59",
+      "figure": "H05",
+      "review": "Argo CD inference-api Healthy/Synced; cây Rollout, ReplicaSets, Services, HPA và AnalysisRuns.",
+      "report_file": "Pictures/h05-argocd.png"
+    },
+    {
+      "index": 6,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-39-12.png",
+      "size": [
+        1920,
+        1200
+      ],
+      "sha256": "52243e20c63e010da984fe932fc2347acf14caaa909d93b46488d199c0a1f05f",
+      "figure": "H03",
+      "review": "MLflow Models: v1/v2/v3, approved và alias champion tại v3.",
+      "report_file": "Pictures/h03-registry.png"
+    },
+    {
+      "index": 7,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-45-29.png",
+      "size": [
+        1602,
+        685
+      ],
+      "sha256": "3170498f4f5c45a1843329c2c9bb5cde9147e9e0c140db27c462a5a99d934572",
+      "figure": "H04",
+      "review": "POST /predict HTTP 200, model_version 3 và kết quả 15.7537 phút.",
+      "report_file": "Pictures/h04-predict.png"
+    },
+    {
+      "index": 8,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-49-02.png",
+      "size": [
+        1916,
+        895
+      ],
+      "sha256": "00c98ac9e121fba3cb1842a9473677c0d4c3292a4ee1523f8d0780d99a9d0e32",
+      "figure": "H09",
+      "review": "GitHub Actions automatic pipeline Success; các jobs CI, Training, Release, checkpoint.",
+      "report_file": "Pictures/h09-pipeline.png"
+    },
+    {
+      "index": 9,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-50-44.png",
+      "size": [
+        1885,
+        896
+      ],
+      "sha256": "3bd8ebaef31da826f60e00f994e0997885b11ec1a57c6d3e6bfb42bd43c940ab",
+      "figure": null,
+      "review": "Pipeline thử nghiệm Rejected, Release bị skip; ảnh JSON 13-30-15 cung cấp quyết định và metrics chi tiết hơn cho H02."
+    },
+    {
+      "index": 10,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-02-07.png",
+      "size": [
+        1825,
+        458
+      ],
+      "sha256": "e23afbe4004815b68dc14439db0cc817666f574274511277258d60d4c6a4df72",
+      "figure": null,
+      "review": "Prometheus target inference-api UP; không chứng minh lịch sử tải/HPA, nên không thay thế H06."
+    },
+    {
+      "index": 11,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-14-13.png",
+      "size": [
+        1586,
+        267
+      ],
+      "sha256": "f979e67c5046a13aa6aa86d4abdaafaf0a2145fb9250c22a0345d4a8458f846d",
+      "figure": "H07 (b)",
+      "review": "Lịch sử Git hiển thị commit Revert của github-actions[bot] và commit Release gốc; bổ sung minh chứng hoàn tác cho Failed/Abort.",
+      "report_file": "Pictures/h07-git-revert.png"
+    },
+    {
+      "index": 12,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-17-04.png",
+      "size": [
+        1415,
+        568
+      ],
+      "sha256": "615c47cfe28da0de3d2b9ccf4c050cce017ba8a47952b6332c9b127e2d0a19cc",
+      "figure": null,
+      "review": "Diff GitOps của release fault injection và CPU metadata; minh chứng phụ không có placeholder riêng."
+    },
+    {
+      "index": 13,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-17-27.png",
+      "size": [
+        1415,
+        568
+      ],
+      "sha256": "b7a147c2858fbfceec77a19751dd080d9aa8dc0aec52615c4ba61d0847ec7d44",
+      "figure": null,
+      "review": "Diff GitOps hoàn tác CPU metadata và release ID; minh chứng phụ không có placeholder riêng."
+    },
+    {
+      "index": 14,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-23-14.png",
+      "size": [
+        1808,
+        1006
+      ],
+      "sha256": "99e0104ff66693d7c95c76acf5752248af5d5eb2ca1977f03b7c7a21b799c0a4",
+      "figure": "H09",
+      "review": "Release summary xác nhận model v3, champion promoted và checkpoint completed.",
+      "report_file": "Pictures/h09-completed.png"
+    },
+    {
+      "index": 15,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-30-15.png",
+      "size": [
+        1808,
+        1006
+      ],
+      "sha256": "a8229bd228ede32d96593c7c5201e682f7ee089801598a81937a8addc71964ac",
+      "figure": "H02",
+      "review": "Validation rejected: candidate MAE 7.862168..., reference v3 MAE 3.644543..., passed false, model_version null, không release/champion change.",
+      "report_file": "Pictures/h02-rejected.png"
+    },
+    {
+      "index": 16,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-31-01.png",
+      "size": [
+        1808,
+        1006
+      ],
+      "sha256": "b4693d3c813808af014302803e35b2b4d6690a75fe6e54fbb4f87d9965d37c25",
+      "figure": "H02",
+      "review": "Validation approved: candidate v3 MAE 3.644543..., reference v2 MAE 3.694947..., minimum improvement 0.01.",
+      "report_file": "Pictures/h02-approved.png"
+    },
+    {
+      "index": 17,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-50-18.png",
+      "size": [
+        1808,
+        1006
+      ],
+      "sha256": "a5699bee763163363db8940a35ed20972d419998b8f0e2939e29f798b5a99ab5",
+      "figure": "H04",
+      "review": "GET /model-info HTTP 200, model v3, MLflow run, release ID và checksums.",
+      "report_file": "Pictures/h04-model-info.png"
+    },
+    {
+      "index": 18,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-58-03.png",
+      "size": [
+        1808,
+        1006
+      ],
+      "sha256": "ec149a523a757dd4a4f8be220a92a43c080902a2ca4eea8ccd6b352e828dc5ff",
+      "figure": null,
+      "review": "Argo CD hiển thị AnalysisRun Failed do p95-latency-seconds; dùng làm đối chiếu, không thay dashboard H07 đã chỉ định."
+    },
+    {
+      "index": 19,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 17-30-12.png",
+      "size": [
+        1761,
+        1047
+      ],
+      "sha256": "db443ce55a4b545bfc9f30a601f92730a8905589f1ed5a443ce7e3aa4d544aee",
+      "figure": null,
+      "review": "Ảnh Successful Canary trước đây, được thay bằng img_5.png theo yêu cầu người dùng."
+    },
+    {
+      "index": 20,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 17-30-23.png",
+      "size": [
+        1761,
+        1047
+      ],
+      "sha256": "ab3219c9718e8dc0db6dc49993df159a105489bf511a8c9069fd0c745de4c86d",
+      "figure": "H07",
+      "review": "Failed Canary Historical Evidence: Stable v3, candidate v3; P95 vượt ngưỡng và ALB quay lại stable.",
+      "report_file": "Pictures/h07-failed-canary.png"
+    },
+    {
+      "index": 21,
+      "file": "mlops-platform-aws/images/Screenshot From 2026-11-19 17-30-34.png",
+      "size": [
+        1761,
+        862
+      ],
+      "sha256": "9f1d2d7e6ed527590cf8c90318f9662f0a9b338f936aef3b0947a0ff66f97189",
+      "figure": "H06",
+      "review": "Inference Load & HPA Historical Evidence: request rate, CPU request utilization và replicas 1→3→1.",
+      "report_file": "Pictures/h06-hpa.png"
+    },
+    {
+      "index": 22,
+      "file": "mlops-platform-aws/images/img.png",
+      "size": [
+        1831,
+        1110
+      ],
+      "sha256": "6d0cc5a4a082713c9f7520e6ab8b48c4998e57dbdbd2d6b1bdcda8ad56cb0836",
+      "figure": null,
+      "review": "Cluster mlops-aws-dev Active, Kubernetes 1.36; thông tin phụ, không chèn thêm ảnh AWS trùng nhóm H01."
+    },
+    {
+      "index": 23,
+      "file": "mlops-platform-aws/images/img_1.png",
+      "size": [
+        1831,
+        1110
+      ],
+      "sha256": "404e09fae7aab5ee5c4c3cd70d9b4870ab16ea89565b01f66a1a70827395ee54",
+      "figure": "H01",
+      "review": "Ba nodes t3.large On-Demand: hai system và một inference-on-demand; Managed Node Group system Active.",
+      "report_file": "Pictures/h01-nodes.png"
+    },
+    {
+      "index": 24,
+      "file": "mlops-platform-aws/images/img_2.png",
+      "size": [
+        1831,
+        1110
+      ],
+      "sha256": "67b4b95906d0182b4319fae63e0b92ff7b52d59d1237a1ebd97ebca9489926cd",
+      "figure": null,
+      "review": "Danh sách workload toàn cluster gồm nhiều namespace; dùng ảnh namespace mlops 12-28-34 cho H01 để khớp nội dung."
+    },
+    {
+      "file": "mlops-platform-aws/images/img_3.png",
+      "size": [
+        738,
+        887
+      ],
+      "sha256": "4e087645bb12a3bf36d0da070ba63a5d8a76de4cf88085aa866a4e06d3187943",
+      "figure": "Hình 3.1",
+      "review": "Ảnh sơ đồ mạng AWS/EKS được người dùng cung cấp, thay thế TikZ; giữ nguyên điểm kết nối và bố cục của ảnh.",
+      "report_file": "Pictures/network.png"
+    },
+    {
+      "file": "mlops-platform-aws/images/img_4.png",
+      "size": [
+        685,
+        1046
+      ],
+      "sha256": "e6c3be91bc1f2e09d633457ec12bb9a162e78df0b5ae95efa71af5798196862b",
+      "figure": "Hình 2.2",
+      "review": "Ảnh vòng đời mô hình được người dùng cung cấp, thay thế TikZ; có Validation Gate, Model Registry, Canary, Promotion/Rollback.",
+      "report_file": "Pictures/lifecycle.png"
+    },
+    {
+      "index": 27,
+      "file": "mlops-platform-aws/images/img_5.png",
+      "size": [
+        1852,
+        1031
+      ],
+      "sha256": "a37fe53b4fb6b5f22a3ed424b0a002371975989dd69a2d9e891cd314a62abe0b",
+      "figure": "H08",
+      "review": "Successful Canary v2→v3: request rate, P95 latency và trọng số ALB; ảnh mới do người dùng chỉ định, dữ liệu lịch sử TestData CSV Content.",
+      "report_file": "Pictures/h08-successful-canary.png"
+    }
+  ],
+  "text_evidence": [
+    {
+      "file": "mlops-platform-aws/images/hpa.txt",
+      "sha256": "b7ab99ac91ba28bc1af2687beafe725552ef9bb01bb89d0061d254fb4b148d42",
+      "review": "Đã đối chiếu cấu hình/trạng thái với phần HPA hoặc Failed Canary; không thêm code snippet vì Markdown không hoạch định khối mã này."
+    },
+    {
+      "file": "mlops-platform-aws/images/AnalysisRunFailed.txt",
+      "sha256": "e412aa74b4c7b24015399b0c855e4e2e6449692740814bb660c68beb8c0c057c",
+      "review": "Đã đối chiếu cấu hình/trạng thái với phần HPA hoặc Failed Canary; không thêm code snippet vì Markdown không hoạch định khối mã này."
+    }
+  ],
+  "missing_required_figures": []
+}

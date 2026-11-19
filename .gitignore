@@ -47,3 +47,7 @@
 
 # Internal end-to-end source evidence.
 /final-e2e-evidence/
+
+# Local report reference template and original screenshots.
+/Report/
+/images/

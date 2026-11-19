@@ -1,0 +1,18 @@
+{
+  "headings": 50,
+  "prose_paragraphs": 147,
+  "lists": 8,
+  "list_items": 26,
+  "resolved_obsidian_images": 1,
+  "resolved_diagram_placeholders": 3,
+  "mermaid_diagrams": 2,
+  "resolved_editorial_figure_notes": 1,
+  "captions_moved_to_figures": 10,
+  "display_equations": 1,
+  "captions_moved_to_tables": 2,
+  "chapters": 5,
+  "tables": 12,
+  "evidence_figures": 9,
+  "total_figures": 12,
+  "source_sha256": "c9058259af066b9581e046f4d5a85a4e3f0e26b38a3359d177dbcab77aa8c8b6"
+}

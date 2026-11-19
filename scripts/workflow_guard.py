@@ -31,13 +31,26 @@ def validate(mode, env):
         raise ValueError("Configure the project datasets bucket")
 
 
+def assert_source(env, head, current_main):
+    expected = env.get("SOURCE_SHA", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", expected) or head != expected or env.get("GITHUB_SHA") != expected:
+        raise ValueError("Checkout must equal the exact admitted CI/dispatch SHA")
+    if current_main != expected:
+        raise ValueError("Stale source: main moved; no cloud mutation or release allowed")
+    if env.get("AUTOMATIC") == "true" and (
+        env.get("AUTO_MLOPS_ENABLED") != "true" or env.get("GITHUB_EVENT_NAME") != "push"
+    ):
+        raise ValueError("Automatic pipeline disabled or not called by main push CI")
+
+
 def main():
     mode=sys.argv[1]
     if mode not in {"train", "release"}:
         raise ValueError("Unknown workflow")
     validate(mode, os.environ)
-    if subprocess.check_output(["git","branch","--show-current"],text=True).strip() != "main":
-        raise ValueError("Checkout must be main")
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    current = subprocess.check_output(["git", "ls-remote", "origin", "refs/heads/main"], text=True).split()[0]
+    assert_source(os.environ, head, current)
     if mode == "train":
         subprocess.run(["git","ls-files","--error-unmatch",os.environ["TRAINING_CONFIG"]],check=True)
     print("Trusted main-branch workflow inputs verified")

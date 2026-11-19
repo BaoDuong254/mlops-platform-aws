@@ -1,0 +1,95 @@
+[
+  {
+    "file": "Pictures/hcmut.png",
+    "source": "mlops-platform-aws/Report/Pictures/hcmut.png",
+    "sha256": "dd2a128c53226a199786c5c53d0ea80a12a4f53fcd6982af03f984e4c6b3c1b1"
+  },
+  {
+    "file": "Pictures/architecture.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-17 21-24-24.png",
+    "sha256": "35b9e737b41147fa7a85c88e81877cbe95624d8c6972a9e066f20804fa86d65d"
+  },
+  {
+    "file": "Pictures/h01-nodes.png",
+    "source": "mlops-platform-aws/images/img_1.png",
+    "sha256": "404e09fae7aab5ee5c4c3cd70d9b4870ab16ea89565b01f66a1a70827395ee54"
+  },
+  {
+    "file": "Pictures/h01-workloads.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-28-34.png",
+    "sha256": "b6c198b44992f564c7a3013ed78bfb529bddba24e0fe9123a6cb4f82273edb96"
+  },
+  {
+    "file": "Pictures/h02-approved.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-31-01.png",
+    "sha256": "b4693d3c813808af014302803e35b2b4d6690a75fe6e54fbb4f87d9965d37c25"
+  },
+  {
+    "file": "Pictures/h02-rejected.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-30-15.png",
+    "sha256": "a8229bd228ede32d96593c7c5201e682f7ee089801598a81937a8addc71964ac"
+  },
+  {
+    "file": "Pictures/h03-registry.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-39-12.png",
+    "sha256": "52243e20c63e010da984fe932fc2347acf14caaa909d93b46488d199c0a1f05f"
+  },
+  {
+    "file": "Pictures/h04-model-info.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-50-18.png",
+    "sha256": "a5699bee763163363db8940a35ed20972d419998b8f0e2939e29f798b5a99ab5"
+  },
+  {
+    "file": "Pictures/h04-predict.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-45-29.png",
+    "sha256": "3170498f4f5c45a1843329c2c9bb5cde9147e9e0c140db27c462a5a99d934572"
+  },
+  {
+    "file": "Pictures/h05-argocd.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-35-12.png",
+    "sha256": "4b292d62e047110f674964ded3568a193cefdbf2434e20e68fa098f3c4fd3a59"
+  },
+  {
+    "file": "Pictures/h06-hpa.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 17-30-34.png",
+    "sha256": "9f1d2d7e6ed527590cf8c90318f9662f0a9b338f936aef3b0947a0ff66f97189",
+    "historical_replay": "Grafana TestData CSV Content"
+  },
+  {
+    "file": "Pictures/h07-failed-canary.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 17-30-23.png",
+    "sha256": "ab3219c9718e8dc0db6dc49993df159a105489bf511a8c9069fd0c745de4c86d",
+    "historical_replay": "Grafana TestData CSV Content"
+  },
+  {
+    "file": "Pictures/h08-successful-canary.png",
+    "source": "mlops-platform-aws/images/img_5.png",
+    "sha256": "a37fe53b4fb6b5f22a3ed424b0a002371975989dd69a2d9e891cd314a62abe0b",
+    "historical_replay": "Grafana TestData CSV Content"
+  },
+  {
+    "file": "Pictures/h09-pipeline.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 12-49-02.png",
+    "sha256": "00c98ac9e121fba3cb1842a9473677c0d4c3292a4ee1523f8d0780d99a9d0e32"
+  },
+  {
+    "file": "Pictures/h09-completed.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-23-14.png",
+    "sha256": "99e0104ff66693d7c95c76acf5752248af5d5eb2ca1977f03b7c7a21b799c0a4"
+  },
+  {
+    "file": "Pictures/lifecycle.png",
+    "source": "mlops-platform-aws/images/img_4.png",
+    "sha256": "e6c3be91bc1f2e09d633457ec12bb9a162e78df0b5ae95efa71af5798196862b"
+  },
+  {
+    "file": "Pictures/network.png",
+    "source": "mlops-platform-aws/images/img_3.png",
+    "sha256": "4e087645bb12a3bf36d0da070ba63a5d8a76de4cf88085aa866a4e06d3187943"
+  },
+  {
+    "file": "Pictures/h07-git-revert.png",
+    "source": "mlops-platform-aws/images/Screenshot From 2026-11-19 13-14-13.png",
+    "sha256": "f979e67c5046a13aa6aa86d4abdaafaf0a2145fb9250c22a0345d4a8458f846d"
+  }
+]

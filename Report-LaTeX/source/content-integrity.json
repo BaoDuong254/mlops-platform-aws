@@ -1,0 +1,60 @@
+{
+  "update": "Apply user revision from root report.md",
+  "updated_sections": [
+    "III",
+    "4.4.4",
+    "V"
+  ],
+  "previous_source_sha256": "51f45ebafc160670ab076ae66244c713073ef7e57580bd44fcf3e4c87250a48b",
+  "source_sha256": "c9058259af066b9581e046f4d5a85a4e3f0e26b38a3359d177dbcab77aa8c8b6",
+  "unchanged_files": [
+    "main.tex",
+    "metadata.tex",
+    "Sections/preamble.tex",
+    "Sections/cover.tex",
+    "Sections/chapter-01.tex",
+    "Sections/chapter-02.tex"
+  ],
+  "unchanged_content_ranges": [
+    "IV before 4.4.4",
+    "5.2"
+  ],
+  "tables_before": 16,
+  "tables_after": 12,
+  "headings": 50,
+  "paragraphs": 147,
+  "table_cells": 169,
+  "figure_count": 12,
+  "formatting_preserved": true,
+  "technical_format_repairs": [
+    "Typeset spaced delta expression as math",
+    "Render bold NodePool identifiers without literal Markdown stars"
+  ],
+  "status": "PASS",
+  "subsequent_cover_update": {
+    "title": "Quản lý và triển khai mô hình học máy trên AWS",
+    "supervisor": "Nguyễn Quang Hùng",
+    "class": "L01",
+    "group": "02",
+    "members": 4,
+    "body_source_unchanged": true
+  },
+  "subsequent_figure_layout_update": {
+    "network_figure_kept_in": "3.1.1",
+    "separate_figure_lead_in_lines_removed": 12,
+    "academic_prose_unchanged": true,
+    "image_pixels_unchanged": true
+  },
+  "subsequent_canary_evidence_update": {
+    "successful_figure": "4.8",
+    "successful_source": "images/img_5.png",
+    "failed_abort_figure": "4.7",
+    "git_revert_source": "images/Screenshot From 2026-11-19 13-14-13.png",
+    "main_captions_and_numbering_preserved": true,
+    "academic_prose_and_tables_unchanged": true,
+    "cover_and_formatting_unchanged": true,
+    "source_image_bytes_preserved": true,
+    "display_crops": "Successful: remove 70 px of browser chrome at top. Git history: omit unrelated merge commit at bottom.",
+    "source_markdown_unchanged": true
+  }
+}

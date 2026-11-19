@@ -15,27 +15,27 @@ def test_exactly_three_workflows_and_no_pr_credentials():
     files={p.name for p in (ROOT/'.github/workflows').glob('*.yml')}
     assert files=={'ci.yml','train.yml','release.yml'}
     ci=yaml.safe_load((ROOT/'.github/workflows/ci.yml').read_text())
-    assert set(ci['jobs'])=={'infrastructure','training','serving','gitops','ci'}
+    assert set(ci['jobs'])=={'infrastructure','training','serving','gitops','ci','auto_mlops'}
     assert ci['permissions']=={'contents':'read'}
     assert set(ci['on'])=={'push','pull_request'}
     assert 'always()' in ci['jobs']['ci']['if']
     for job in ci['jobs'].values():
-        assert not any('configure-aws-credentials' in x.get('uses','') for x in job['steps'])
+        assert not any('configure-aws-credentials' in x.get('uses','') for x in job.get('steps', []))
 
 
 def test_cloud_workflows_serialize_and_use_distinct_roles_main_only():
     w={key:yaml.safe_load((ROOT/f'.github/workflows/{key}.yml').read_text()) for key in ('train','release')}
-    assert w['train']['concurrency']==w['release']['concurrency']
-    assert w['train']['concurrency']['cancel-in-progress'] is False
+    assert w['train']['jobs']['train']['concurrency']==w['release']['jobs']['release']['concurrency']
+    assert w['train']['jobs']['train']['concurrency']['cancel-in-progress'] is False
     for name,workflow in w.items():
-        assert set(workflow['on'])=={'workflow_dispatch'}
+        assert set(workflow['on'])=={'workflow_dispatch', 'workflow_call'}
         job=workflow['jobs'][name]
         assert 'refs/heads/main' in job['if']
-        auth=next(x for x in job['steps'] if 'configure-aws-credentials' in x.get('uses',''))
+        auth=next(x for x in job.get('steps', []) if 'configure-aws-credentials' in x.get('uses',''))
         assert auth['with']['role-to-assume']==('${{ vars.AWS_ROLE_TRAIN }}' if name=='train' else '${{ vars.AWS_ROLE_RELEASE }}')
-        close=next(x for x in job['steps'] if 'close --state-file' in x.get('run',''))
+        close=next(x for x in job.get('steps', []) if 'close --state-file' in x.get('run',''))
         assert 'always()' in close['if']
-        assert workflow['permissions']['contents']==('write' if name=='release' else 'read')
+        assert job['permissions']['contents']==('write' if name=='release' else 'read')
 
 
 def smoke_script():

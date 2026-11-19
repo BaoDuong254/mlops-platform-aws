@@ -1,0 +1,40 @@
+{
+  "upstream": "https://ctan.org/pkg/cm-unicode",
+  "version": "0.7.0",
+  "license": "SIL Open Font License 1.1",
+  "source_archive": "https://mirrors.ctan.org/systems/texlive/tlnet/archive/cm-unicode.tar.xz",
+  "files": [
+    {
+      "file": "cmunbi.otf",
+      "sha256": "690cc3c1511a98e79f5bde8a58868405160da1b7d99f3482324c6a915b496b02"
+    },
+    {
+      "file": "cmunbx.otf",
+      "sha256": "e956d496776533b0ca1b6e1acaeac896b81b81b908667cbf49840048ed16bd0c"
+    },
+    {
+      "file": "cmunit.otf",
+      "sha256": "140bf950cbf4addac395367990117c8e6f327526fef64bf1512928744cde0289"
+    },
+    {
+      "file": "cmunrm.otf",
+      "sha256": "5089693f81ed5b83435be7167bf2f93c2608ce92fb3a7e13f6be238a733c38f2"
+    },
+    {
+      "file": "cmuntb.otf",
+      "sha256": "51cafc61d575ca03cdae46fbcb455b90b8d16c1e73745e4eae1efeefcc877dc0"
+    },
+    {
+      "file": "cmunti.otf",
+      "sha256": "fc38ce9ea06e49bda118a8be9f053791d043a547c248ae30c9e4fad956de3267"
+    },
+    {
+      "file": "cmuntt.otf",
+      "sha256": "f4302554e94621459f33526dca714e7f9d537128b37556741568ae7115b252b5"
+    },
+    {
+      "file": "cmuntx.otf",
+      "sha256": "de9a8ff2a27fa20e3520ebb4aea4099824a484f3f386cf7d9c8c3e826155e5d6"
+    }
+  ]
+}

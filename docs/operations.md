@@ -94,3 +94,19 @@ Thứ tự cleanup khi **thực sự muốn dừng môi trường**: xác nhận
 Chỉ kết quả canary bị từ chối (exit 3) mới kích hoạt guarded revert trong release. Inconclusive/timeout, main di chuyển, API/Registry verification lỗi sau promotion, mất runner/network không được coi là rollback đã hoàn tất. Khi đó đọc run log, Rollout/AnalysisRun, Application revision, stable/current hashes và exact imageID; không đổi champion thủ công để che lỗi. `m32_verify.py` mặc định có thể promote alias, không dùng như lệnh read-only; dùng `m32_champion_info.py` để đọc.
 
 `make tf-platform-down` hiện tích hợp cleanup Phase 4 trước cloud teardown. Kiểm tra đúng project ALB qua Ingress và tags, chờ controller dọn trước khi gỡ controller. Legacy `m31-deploy`/`m31-cleanup` đã bị vô hiệu hóa để tránh bỏ qua quyền sở hữu GitOps. Không chạy cleanup hoặc backup mới chỉ để đọc status.
+
+## Vận hành CI → Training → Release tự động
+
+Cơ chế và các lệnh enable/setup được mô tả trong [automated pipeline](automated-pipeline.md). Auto mặc định tắt; manual dispatch vẫn hoạt động. Khi bật, theo dõi **cùng Source CI run** và các nested jobs plan/train/release/checkpoint, không tìm hai dispatch run IDs mới.
+
+- `no-training-change`/auto off/PR là skip hợp lệ; CI failure không được vào AWS.
+- `rejected` là model gate decision hợp lệ: không approved version mới, không release/champion update.
+- `stale` giữ baseline chưa xử lý cho latest main; không phát hành source SHA cũ.
+- `blocked`, thiếu/mất/expired checkpoint: dừng auto retry cùng inputs. Đọc intent/checkpoint, training logs/Registry, release expected/result, Argo actual revision và CIDRs; recovery bằng manual workflows khi có kế hoạch. Chỉ cập nhật baseline sau reconciliation có bằng chứng; không xóa evidence lịch sử hoặc nâng baseline để che failure.
+- Canary rejectedexit3 vẫn dùng abort + guarded Git revert + stable verification. Timeout/Inconclusive/generator/network/verification/cleanup failure không có bảo đảm tự rollback; champion có thể đã đổi hợp lệ trước lỗi cleanup cuối.
+
+Release traffic ở namespace`mlops-release-traffic`,40RPS/20VUs/600s, Jobdeadline660s vàTTL300s. Không chạy thêm`make monitoring-load-test` đồng thời release workflow. Xem logs`canary-traffic.log` trong release artifact và Pod logs nếu còn; generator budget khác application gates. Thiếu traffic/NaN không được tự coi là pass.
+
+Trước khi dừng platform, đặt auto flagfalse để chặn runs mới, chờ jobs đang chạy và cleanup/CIDR restore. Kiểm Jobs/Pods trong namespace traffic, xác nhận exact run-owned workload đã dọn; không delete namespace nếu có dữ liệu/nguồn lực ngoài load scope. Namespace/quota/RBAC không tự tạo EC2 hoặc persistent data, nhưng tải có thể khiến HPA/Karpenter scale trong giới hạn hiện hữu. Thứ tự gỡ Ingress/ALB trước controllers/EKS và backup persistent data vẫn giữ nguyên.
+
+Source mới chỉ local/simulated verified, chưa GitHub/AWS verified. Các số liệu và502/503 ngày16/11 là lịch sử, không được thay bằng giả định “fully automated nên không còn lỗi”.

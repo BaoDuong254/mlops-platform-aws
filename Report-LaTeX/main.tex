@@ -1,0 +1,21 @@
+% Compile with XeLaTeX: latexmk -xelatex main.tex
+\input{Sections/preamble}
+\input{metadata}
+\begin{document}
+\hypersetup{pageanchor=false}
+\input{Sections/cover}
+\pagenumbering{arabic}
+\hypersetup{pageanchor=true}
+\begingroup
+\setstretch{1.3}
+\fontsize{12}{15}\selectfont
+\tableofcontents
+\clearpage
+\endgroup
+\ReportBodyFont
+\input{Sections/chapter-01}
+\input{Sections/chapter-02}
+\input{Sections/chapter-03}
+\input{Sections/chapter-04}
+\input{Sections/chapter-05}
+\end{document}

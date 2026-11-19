@@ -82,12 +82,27 @@ jobs:
     steps:
     - env:
         RESULTS: ${{ toJSON(needs) }}
-      run: 'python3 - <<''PY''
-
+      run: |-
+        python3 - <<'PY'
         import json, os
-
         results = json.loads(os.environ["RESULTS"])
-
         assert all(job["result"] == "success" for job in results.values()), results
-
-        PY'
+        PY
+  auto_mlops:
+    name: Automatic MLOps
+    needs:
+    - ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci.result == 'success' && vars.AUTO_MLOPS_ENABLED
+      == 'true' && github.repository_id == vars.EXPECTED_REPOSITORY_ID && github.repository_owner_id == vars.EXPECTED_OWNER_ID
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+    concurrency:
+      group: auto-mlops-${{ vars.EKS_CLUSTER_NAME || 'mlops-aws-dev' }}
+      cancel-in-progress: false
+    uses: ./.github/workflows/train.yml
+    with:
+      automatic: true
+      source_sha: ${{ github.sha }}
+      training_config: configs/training.yaml
