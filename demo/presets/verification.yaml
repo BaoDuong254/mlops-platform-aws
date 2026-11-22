@@ -1,0 +1,35 @@
+preset: verification
+description: >-
+  Bộ A — kiểm thử framework và các luồng trước ngày demo. Tải HPA nhẹ (20 RPS); S2 chỉ preview
+  (không merge vào main) trừ khi đổi mode sang automatic.
+defaults:
+  github_repo: HaiXon231/mlops-platform-aws
+  aws_account_id: "160616607747"
+  aws_region: ap-southeast-1
+  cluster: mlops-aws-dev
+  model_name: nyc-taxi-trip-duration
+sequence: [S1, S3, S4, S5]
+sequence_notes:
+  - S2 ở mode preview chạy local bất kỳ lúc nào (không dùng AWS ngoài đọc champion).
+scenarios:
+  S1:
+    training_config: configs/demo-rejected.yaml
+    model_overrides: {n_estimators: 1, num_leaves: 2}
+  S2:
+    mode: preview
+    candidate_config: configs/demo-candidate.yaml
+    model_overrides: {n_estimators: 3000, num_leaves: 255, min_child_samples: 50}
+  S3:
+    model_name: nyc-taxi-trip-duration
+    model_version: champion
+    canary_test_cpu: "off"
+  S4:
+    model_name: nyc-taxi-trip-duration
+    model_version: champion
+    canary_test_cpu: 100m
+  S5:
+    target: service
+    load_profiles:
+      - {name: steady-20rps, rate: 20, vus: 10, duration_seconds: 120}
+    sample_interval_seconds: 15
+    observe_after_seconds: 420

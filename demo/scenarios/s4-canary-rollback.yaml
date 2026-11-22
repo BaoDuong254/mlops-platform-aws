@@ -1,0 +1,50 @@
+id: S4
+title: Failed Canary & Rollback
+engine: release
+goal: >-
+  Fault injection có sẵn (canary_test_cpu=100m) chỉ giới hạn CPU của Candidate. Prometheus gates
+  (P95 tuyệt đối/tương đối) làm AnalysisRun Failed → Rollout abort → guarded Git revert → stable khôi phục,
+  champion giữ nguyên. Phân biệt rõ với timeout/network/infra failure.
+mutates_aws: true
+lock: eks-mutation
+estimated_minutes: 25
+inputs:
+  model_name: {type: model_name}
+  model_version: {type: model_version}
+  canary_test_cpu: {type: enum, values: ["100m"]}
+preflight: [tools, aws_identity, kube_context, gh_access, git_main_synced, no_active_workflows,
+            no_active_jobs, rollout_stable, argocd_synced_main, champion, model_version_approved, monitoring]
+initial_state:
+  - Giống S3; ghi lại stable digest/hash và champion để so sau rollback.
+input_change: >-
+  canary_test_cpu={canary_test_cpu}: m32_gitops chỉ đổi requests/limits CPU của Pod template mới
+  (stable 250m/1 CPU giữ nguyên) và ghi annotation test-original-cpu-*.
+trigger:
+  - id: dispatch-release
+    effect: aws
+    run: gh workflow run release.yml --repo {github_repo} --ref main -f model_name={model_name} -f model_version={model_version} -f canary_test_cpu={canary_test_cpu}
+github_ui:
+  workflow: Approved Model Release (release.yml)
+  branch: main
+  fields: {model_name: "{model_name}", model_version: "{model_version}", canary_test_cpu: "{canary_test_cpu}"}
+observe:
+  - {ui: kubectl, what: "Candidate Pod CPU: `kubectl -n mlops get pods -l app=inference-api -o custom-columns=NAME:.metadata.name,HASH:.metadata.labels.rollouts-pod-template-hash,CPU:.spec.containers[0].resources.limits.cpu`."}
+  - {ui: Grafana, what: "`Canary Deployment & Performance`: P95 canary tăng vượt 0.5s / 1.5×stable+0.05s."}
+  - {ui: kubectl, what: "`make canary-status`: AnalysisRun Failed, Rollout Degraded/aborted."}
+  - {ui: Argo CD, what: "Commit release rồi commit `Revert \"m32: release ...\"`; Application Synced/Healthy về stable cũ."}
+  - {ui: GitHub Actions, what: "Run kết thúc failure CÓ CHỦ ĐÍCH; summary `Canary rejected ... champion alias was NOT changed`."}
+verify:
+  expect: aborted_reverted
+  timeout_minutes: 90
+  criteria:
+    - Workflow conclusion = failure với log/summary `Canary rejected` (không phải timeout/cancel).
+    - Có commit release và ngay sau đó commit revert trên main.
+    - AnalysisRun của release = Failed (metric p95-latency-seconds hoặc p95-latency-vs-stable).
+    - Candidate CPU = 100m trong khi stable giữ nguyên.
+    - Live stable digest = digest trước chạy; champion không đổi.
+recovery:
+  checks: [no_traffic_jobs, rollout_stable, argocd_synced_main, live_matches_git, stable_digest_restored,
+           champion_unchanged, eks_cidrs_restored]
+  notes:
+    - "Nếu không có revert (main đã di chuyển hoặc push bị từ chối): `git revert <release-commit>` qua PR; không sửa Rollout bằng tay (Argo CD selfHeal ghi đè)."
+    - "Workflow failure trước GitOps commit = INCONCLUSIVE (hạ tầng), không phải canary bị từ chối."
