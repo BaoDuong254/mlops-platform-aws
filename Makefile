@@ -451,3 +451,9 @@ demo-preview:
 	$(DEMO) preview --preset $(DEMO_PRESET) --scenario S2 --train
 demo-sequence:
 	$(DEMO) sequence --preset $(DEMO_PRESET)
+# Champion alias staging, dry-run unless DEMO_EXECUTE=1. VERSION=<n> moves it; -restore undoes the last move.
+.PHONY: demo-champion demo-champion-restore
+demo-champion:
+	$(DEMO) champion $(if $(VERSION),--version $(VERSION)) $(if $(DEMO_EXECUTE),--execute)
+demo-champion-restore:
+	$(DEMO) champion --restore $(if $(DEMO_EXECUTE),--execute)

@@ -416,6 +416,78 @@ def cmd_sequence(args) -> int:
     return 0
 
 
+CHAMPION_HISTORY = STATE_DIR / "champion-history.json"
+
+
+def _champion_client(args):
+    """MlflowClient on --tracking-uri, or on a temporary port-forward to the cluster MLflow."""
+    import contextlib
+    from mlflow import MlflowClient
+    from demo.runner import probes
+    if args.tracking_uri:
+        return contextlib.nullcontext(MlflowClient(tracking_uri=args.tracking_uri))
+    @contextlib.contextmanager
+    def tunnel():
+        with probes.port_forward("mlops", "mlflow", 5000, "/health") as url:
+            yield MlflowClient(tracking_uri=url)
+    return tunnel()
+
+
+def _show_version(label, info) -> None:
+    if not info:
+        print(f"  {label}: (none)")
+        return
+    mae = info.get("validation_mae_minutes")
+    print(f"  {label}: v{info['version']} {info['status']}/{info['validation_status']} "
+          f"MAE={mae:.6f} key={str(info['validation_dataset_key'])[:12]}" if mae else f"  {label}: v{info['version']}")
+
+
+def cmd_champion(args, client=None) -> int:
+    from demo.runner import champion
+    preset = spec.load_preset(args.preset)
+    model = preset["defaults"]["model_name"]
+    history = Path(args.history) if args.history else CHAMPION_HISTORY
+    with (_champion_client(args) if client is None else __import__("contextlib").nullcontext(client)) as mlflow:
+        if args.restore:
+            record = champion.restore_target(mlflow, model, history)
+            target, expected = record["from"], record["to"]
+            print(f"Restore: undo change at {record['at']} (v{record['from']} -> v{record['to']})")
+        elif args.version:
+            target = args.version
+            expected = None
+        else:
+            _show_version("champion", champion.current(mlflow, model))
+            for record in json.loads(history.read_text()) if history.exists() else []:
+                print(f"  history: {record['at']} v{record['from']} -> v{record['to']} {record.get('reason', '')}"
+                      f"{' (restored ' + record['restored'] + ')' if record.get('restored') else ''}")
+            return 0
+        result = champion.plan(mlflow, model, target)
+        print(f"Champion alias plan for {model}:")
+        _show_version("now   ", result["before"])
+        _show_version("target", result["after"])
+        for note in result["notes"]:
+            print("  note:", note)
+        for error in result["errors"]:
+            print("  ERROR:", error)
+        if result["errors"]:
+            return 2
+        if result["noop"]:
+            return 0
+        expected = expected if args.restore else (result["before"] or {}).get("version")
+        if not args.execute:
+            print(f"\nDRY-RUN: nothing changed. Add --execute to move champion v{expected} -> v{target}.")
+            return 0
+        if not args.yes and input(f"Type v{target} to move champion: ").strip() != f"v{target}":
+            print("Cancelled; nothing changed.")
+            return 1
+        if args.restore:
+            done = champion.restore(mlflow, model, history, utc_now())
+        else:
+            done = champion.apply(mlflow, model, target, expected, history, utc_now(), args.reason or "")
+        print(f"Champion is now v{done['confirmed']['version']} (read back). History: {history}")
+        return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m demo.runner", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -445,13 +517,23 @@ def build_parser() -> argparse.ArgumentParser:
         cmd.add_argument("--target", required=True)
     seq = sub.add_parser("sequence", help="ordered demo plan")
     seq.add_argument("--preset", required=True)
+    ch = sub.add_parser("champion", help="show / move / restore the MLflow champion alias (dry-run by default)")
+    ch.add_argument("--preset", default="demo", help="preset whose model_name is used")
+    target = ch.add_mutually_exclusive_group()
+    target.add_argument("--version", help="explicit approved version to point champion at")
+    target.add_argument("--restore", action="store_true", help="undo the latest recorded change")
+    ch.add_argument("--execute", action="store_true", help="really move the alias (asks for confirmation)")
+    ch.add_argument("--yes", action="store_true")
+    ch.add_argument("--reason", help="note stored in the history")
+    ch.add_argument("--tracking-uri", help="use this MLflow URI instead of a temporary port-forward")
+    ch.add_argument("--history", help=argparse.SUPPRESS)
     return parser
 
 
 COMMANDS = {"list": cmd_list, "validate": cmd_validate, "render-configs": cmd_render_configs, "show": cmd_show,
             "preflight": cmd_preflight, "run": cmd_run, "verify": cmd_verify, "recover": cmd_recover,
             "preview": cmd_preview, "apply-candidate": cmd_apply_candidate, "restore-config": cmd_restore_config,
-            "sequence": cmd_sequence}
+            "sequence": cmd_sequence, "champion": cmd_champion}
 
 
 def main(argv: list[str] | None = None) -> int:
