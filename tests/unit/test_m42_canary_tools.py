@@ -63,17 +63,17 @@ def test_load_test_can_target_alb_but_only_validated_hostnames():
     assert not re.search(r"\$\{\w+\}", template), "every placeholder must be substituted"
 
 
-def test_dashboard_compares_replicasets_without_breaking_phase_three_panels():
-    dashboard = json.loads((ROOT / "deploy/monitoring/inference-dashboard.json").read_text())
-    ids = [panel["id"] for panel in dashboard["panels"]]
-    assert len(ids) == len(set(ids))
-    titles = [panel["title"] for panel in dashboard["panels"]]
-    assert titles[:4] == ["Prediction request rate", "Prediction P95 latency",
-                          "Prediction error rate", "Inference Pod scrape status (1 = UP)"]
-    canary = [panel for panel in dashboard["panels"] if panel["title"].startswith("Canary:")]
-    assert len(canary) == 3
-    assert all("by (" in panel["targets"][0]["expr"] and "rollouts_pod_template_hash" in panel["targets"][0]["expr"]
-               for panel in canary)
+def test_dashboards_separate_load_from_per_replicaset_canary():
+    load = json.loads((ROOT / "deploy/monitoring/inference-load-hpa-dashboard.json").read_text())
+    canary = json.loads((ROOT / "deploy/monitoring/canary-performance-dashboard.json").read_text())
+    assert load['uid'] != canary['uid']
+    assert any('Request Throughput' in p['title'] for p in load['panels'])
+    assert any('HPA Replicas' in p['title'] for p in load['panels'])
+    for doc in (load, canary):
+        ids = [panel['id'] for panel in doc['panels']]
+        assert len(ids) == len(set(ids))
+    assert len(canary['panels']) == 3
+    assert all('rollouts_pod_template_hash' in panel['targets'][0]['expr'] for panel in canary['panels'])
 
 
 def test_status_and_split_scripts_stay_read_only():

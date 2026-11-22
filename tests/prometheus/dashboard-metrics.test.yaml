@@ -1,0 +1,91 @@
+# Synthetic offline unit fixtures, never used as runtime dashboard data.
+fuzzy_compare: true
+rule_files:
+- rules.yaml
+evaluation_interval: 15s
+tests:
+- name: distinct-replicasets-and-real-hpa-status
+  interval: 15s
+  input_series:
+  - series: inference_http_requests_total{job="inference-api",namespace="mlops",path="/predict",rollouts_pod_template_hash="stable"}
+    values: 0+30x16
+  - series: inference_http_requests_total{job="inference-api",namespace="mlops",path="/predict",rollouts_pod_template_hash="candidate"}
+    values: 0+15x16
+  - series: inference_http_errors_total{job="inference-api",namespace="mlops",path="/predict",status="503",rollouts_pod_template_hash="candidate"}
+    values: 0+0.3x16
+  - series: inference_http_request_duration_seconds_bucket{job="inference-api",namespace="mlops",path="/predict",le="0.1",rollouts_pod_template_hash="stable"}
+    values: 0+30x16
+  - series: inference_http_request_duration_seconds_bucket{job="inference-api",namespace="mlops",path="/predict",le="+Inf",rollouts_pod_template_hash="stable"}
+    values: 0+30x16
+  - series: inference_http_request_duration_seconds_bucket{job="inference-api",namespace="mlops",path="/predict",le="0.1",rollouts_pod_template_hash="candidate"}
+    values: 0+0x16
+  - series: inference_http_request_duration_seconds_bucket{job="inference-api",namespace="mlops",path="/predict",le="0.5",rollouts_pod_template_hash="candidate"}
+    values: 0+15x16
+  - series: inference_http_request_duration_seconds_bucket{job="inference-api",namespace="mlops",path="/predict",le="+Inf",rollouts_pod_template_hash="candidate"}
+    values: 0+15x16
+  - series: kube_horizontalpodautoscaler_status_current_replicas{job="mlops-state",namespace="mlops",horizontalpodautoscaler="inference-api"}
+    values: 2+0x16
+  - series: kube_horizontalpodautoscaler_status_desired_replicas{job="mlops-state",namespace="mlops",horizontalpodautoscaler="inference-api"}
+    values: 3+0x16
+  promql_expr_test:
+  - expr: m33_load_hpa_p2_a
+    eval_time: 3m
+    exp_samples:
+    - labels: m33_load_hpa_p2_a
+      value: 3
+  - expr: m33_canary_p2_a
+    eval_time: 3m
+    exp_samples:
+    - labels: m33_canary_p2_a{rollouts_pod_template_hash="stable"}
+      value: 2
+    - labels: m33_canary_p2_a{rollouts_pod_template_hash="candidate"}
+      value: 1
+  - expr: m33_canary_p3_a
+    eval_time: 3m
+    exp_samples:
+    - labels: m33_canary_p3_a{rollouts_pod_template_hash="stable"}
+      value: 95
+    - labels: m33_canary_p3_a{rollouts_pod_template_hash="candidate"}
+      value: 480
+  - expr: round(m33_canary_p4_a, 0.000000001)
+    eval_time: 3m
+    exp_samples:
+    - labels: '{rollouts_pod_template_hash="stable"}'
+      value: 0
+    - labels: '{rollouts_pod_template_hash="candidate"}'
+      value: 2
+  - expr: m33_load_hpa_p4_b
+    eval_time: 3m
+    exp_samples:
+    - labels: m33_load_hpa_p4_b{job="mlops-state",namespace="mlops",horizontalpodautoscaler="inference-api"}
+      value: 3
+- name: idle-has-no-fabricated-errors-or-traffic-split
+  interval: 15s
+  input_series:
+  - series: inference_http_requests_total{job="inference-api",namespace="mlops",path="/predict",rollouts_pod_template_hash="idle"}
+    values: 10+0x16
+  promql_expr_test:
+  - expr: m33_canary_p4_a
+    eval_time: 3m
+    exp_samples: []
+  - expr: m33_load_hpa_p6_a
+    eval_time: 3m
+    exp_samples: []
+  - expr: m33_canary_p2_a
+    eval_time: 3m
+    exp_samples:
+    - labels: m33_canary_p2_a{rollouts_pod_template_hash="idle"}
+      value: 0
+- name: missing-scrapes-do-not-show-healthy-zeroes
+  interval: 15s
+  input_series: []
+  promql_expr_test:
+  - expr: m33_load_hpa_p2_a
+    eval_time: 3m
+    exp_samples: []
+  - expr: m33_load_hpa_p6_a
+    eval_time: 3m
+    exp_samples: []
+  - expr: m33_canary_p4_a
+    eval_time: 3m
+    exp_samples: []

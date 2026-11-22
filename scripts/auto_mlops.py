@@ -18,7 +18,7 @@ TRAINING_FILES = {
     "deploy/training/Dockerfile", "deploy/platform/mlops/training-job.yaml.tpl",
     "deploy/platform/mlops/serviceaccounts.yaml",
     "scripts/train_workflow.sh", "scripts/training_result.py", "scripts/workflow_guard.py",
-    "scripts/auto_mlops.py", "scripts/m23-render.py", "scripts/m23-common.sh",
+    "scripts/auto_mlops.py", "scripts/m23-render.py", "scripts/m23-common.sh", "scripts/image_identity.py",
     ".github/workflows/train.yml", ".github/workflows/ci.yml",
 }
 GITOPS_FILES = {"deploy/gitops/inference/deployment.yaml", "deploy/gitops/inference/rollout.yaml"}

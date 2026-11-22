@@ -1,4 +1,4 @@
-# prometheus-community/prometheus 29.37.1. One ephemeral server and only inference Pod scraping.
+# Prometheus 29.37.1; inference scrape contract unchanged. KSM reads only mlops HPA/Pods.
 rbac:
   create: false
 serviceAccounts:
@@ -17,14 +17,41 @@ configmapReload:
 alertmanager:
   enabled: false
 kube-state-metrics:
-  enabled: false
+  enabled: true
+  fullnameOverride: m33-mlops-state
+  collectors:
+  - horizontalpodautoscalers
+  - pods
+  namespaces:
+  - mlops
+  rbac:
+    create: true
+    useClusterRole: false
+  metricLabelsAllowlist:
+  - pods=[app]
+  metricAllowlist:
+  - kube_horizontalpodautoscaler_status_current_replicas
+  - kube_horizontalpodautoscaler_status_desired_replicas
+  - kube_horizontalpodautoscaler_status_target_metric
+  - kube_horizontalpodautoscaler_spec_target_metric
+  - kube_pod_status_ready
+  - kube_pod_labels
+  resources:
+    requests:
+      cpu: 20m
+      memory: 48Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  nodeSelector:
+    eks.amazonaws.com/nodegroup: system
 prometheus-node-exporter:
   enabled: false
 prometheus-pushgateway:
   enabled: false
 server:
   namespaces:
-    - mlops
+  - mlops
   replicaCount: 1
   persistentVolume:
     enabled: false
@@ -45,42 +72,70 @@ server:
   nodeSelector:
     eks.amazonaws.com/nodegroup: system
 scrapeConfigs:
-  prometheus: {enabled: false}
-  kubernetes-api-servers: {enabled: false}
-  kubernetes-nodes: {enabled: false}
-  kubernetes-nodes-cadvisor: {enabled: false}
-  kubernetes-service-endpoints: {enabled: false}
-  kubernetes-service-endpoints-slow: {enabled: false}
-  prometheus-pushgateway: {enabled: false}
-  kubernetes-services: {enabled: false}
-  kubernetes-pods: {enabled: false}
-  kubernetes-pods-slow: {enabled: false}
+  prometheus:
+    enabled: false
+  kubernetes-api-servers:
+    enabled: false
+  kubernetes-nodes:
+    enabled: false
+  kubernetes-nodes-cadvisor:
+    enabled: false
+  kubernetes-service-endpoints:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  kubernetes-pods:
+    enabled: false
+  kubernetes-pods-slow:
+    enabled: false
 serverFiles:
   prometheus.yml:
     scrape_configs:
-      - job_name: inference-api
-        scrape_interval: 15s
-        metrics_path: /metrics
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names: [mlops]
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: inference-api
-            action: keep
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            regex: inference-api
-            action: keep
-          - source_labels: [__meta_kubernetes_pod_container_port_name]
-            regex: http
-            action: keep
-          - source_labels: [__meta_kubernetes_pod_phase]
-            regex: Running
-            action: keep
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-          - source_labels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
-            target_label: rollouts_pod_template_hash
+    - job_name: inference-api
+      scrape_interval: 15s
+      metrics_path: /metrics
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - mlops
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_pod_label_app
+        regex: inference-api
+        action: keep
+      - source_labels:
+        - __meta_kubernetes_pod_container_name
+        regex: inference-api
+        action: keep
+      - source_labels:
+        - __meta_kubernetes_pod_container_port_name
+        regex: http
+        action: keep
+      - source_labels:
+        - __meta_kubernetes_pod_phase
+        regex: Running
+        action: keep
+      - source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: pod
+      - source_labels:
+        - __meta_kubernetes_pod_label_rollouts_pod_template_hash
+        target_label: rollouts_pod_template_hash
+    - job_name: mlops-state
+      scrape_interval: 15s
+      static_configs:
+      - targets:
+        - m33-mlops-state.monitoring.svc.cluster.local:8080
+      metric_relabel_configs:
+      - source_labels:
+        - namespace
+        regex: mlops
+        action: keep

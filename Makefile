@@ -140,9 +140,11 @@ M33_TARGET ?= service
 M33_PAYLOAD ?= valid
 
 m33-test:
-	$(UV) run --locked pytest -q tests/unit/test_m33_config.py
+	$(UV) run --locked pytest -q tests/unit/test_m33_config.py tests/unit/test_grafana_history.py
 	$(UV) run --locked python scripts/m31-validate-manifest.py
-	python3 -m json.tool deploy/monitoring/inference-dashboard.json >/dev/null
+	python3 -m json.tool deploy/monitoring/inference-load-hpa-dashboard.json >/dev/null
+	python3 -m json.tool deploy/monitoring/canary-performance-dashboard.json >/dev/null
+	$(UV) run --locked python scripts/check_dashboard_metrics.py
 	bash -n scripts/m33.sh
 	kubectl kustomize deploy/gitops/inference >/dev/null
 	helm template m33-prometheus prometheus-community/prometheus --version 29.37.1 --namespace monitoring -f deploy/monitoring/prometheus-values.yaml >/dev/null
@@ -206,10 +208,10 @@ m23-test:
 	$(UV) run --locked pytest -q tests/unit tests/integration
 
 m23-images-build:
-	bash scripts/m23-images.sh build
+	bash scripts/m23-images.sh build $(IMAGE_PURPOSE)
 
 m23-images-push:
-	bash scripts/m23-images.sh push
+	bash scripts/m23-images.sh push $(IMAGE_PURPOSE)
 
 m23-data-sync:
 	bash scripts/m23-data-sync.sh
@@ -389,7 +391,7 @@ monitoring-cleanup: m33-cleanup
 ci-infrastructure:
 	bash scripts/source_checks.sh infrastructure
 ci-training:
-	$(UV) run --locked pytest -q tests/unit/test_features.py tests/unit/test_gate.py tests/unit/test_m23_cloud.py tests/integration/test_training_pipeline.py tests/integration/test_mlflow_tracking.py tests/unit/test_training_workflow.py tests/unit/test_auto_mlops.py
+	$(UV) run --locked pytest -q tests/unit/test_features.py tests/unit/test_gate.py tests/unit/test_m23_cloud.py tests/integration/test_training_pipeline.py tests/integration/test_mlflow_tracking.py tests/unit/test_training_workflow.py tests/unit/test_auto_mlops.py tests/unit/test_image_identity.py tests/unit/test_image_migration.py
 ci-serving:
 	$(UV) run --locked pytest -q tests/unit/test_inference.py tests/integration/test_inference_export.py tests/integration/test_m32_bundle.py
 ci-gitops:
@@ -404,6 +406,21 @@ canary-platform-cleanup:
 .PHONY: auto-pipeline-test
 auto-pipeline-test:
 	$(UV) run --locked pytest -q tests/unit/test_auto_mlops.py tests/unit/test_workflows.py
+
+# Read-only image identities; IMAGE_PURPOSE defaults to all.
+.PHONY: cloud-image-tags
+cloud-image-tags:
+	bash scripts/m23-images.sh tags $(IMAGE_PURPOSE)
+
+# One-time ECR tag migration, verified against Git build inputs; no image rebuild.
+.PHONY: cloud-images-migrate-plan cloud-images-migrate cloud-images-resolve
+cloud-images-migrate-plan:
+	python3 scripts/migrate_image_tags.py
+cloud-images-migrate:
+	python3 scripts/migrate_image_tags.py --apply
+cloud-images-resolve:
+	bash scripts/m23-images.sh resolve $(IMAGE_PURPOSE)
+
 # Live demo & verification framework (demo/; see DEMO_RUNBOOK.md). Default is dry-run.
 .PHONY: demo-test demo-validate demo-list demo-show demo-run demo-execute demo-preflight demo-verify \
         demo-recover demo-preview demo-sequence
