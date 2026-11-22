@@ -110,3 +110,7 @@ Release traffic ở namespace`mlops-release-traffic`,40RPS/20VUs/600s, Jobdeadli
 Trước khi dừng platform, đặt auto flagfalse để chặn runs mới, chờ jobs đang chạy và cleanup/CIDR restore. Kiểm Jobs/Pods trong namespace traffic, xác nhận exact run-owned workload đã dọn; không delete namespace nếu có dữ liệu/nguồn lực ngoài load scope. Namespace/quota/RBAC không tự tạo EC2 hoặc persistent data, nhưng tải có thể khiến HPA/Karpenter scale trong giới hạn hiện hữu. Thứ tự gỡ Ingress/ALB trước controllers/EKS và backup persistent data vẫn giữ nguyên.
 
 Happy path automatic đã GitHub/AWS verified ngày 18/11/2026 ([run 44220667678](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44220667678)); đã bổ sung [automatic Rejected](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44240966510) và [manual shared Release rollback](https://github.com/HaiXon231/mlops-platform-aws/actions/runs/44256392109); timeout/network/terminalInconclusive và automaticparentcheckpoint sau ReleaseFailure chưa thử cloud. Các số liệu và502/503 ngày16/11 là lịch sử, không được thay bằng giả định “fully automated nên không còn lỗi”.
+
+## Image identity và monitoring mới
+
+Xem [hướng dẫn image refs/digest lock, restore và hai dashboard realtime](image-management-and-monitoring.md). `monitoring-deploy` tự provision **Inference Load & HPA** và **Canary Deployment & Performance**, đồng thời lưu dashboard CSV trước khi recreate Grafana. `monitoring-verify` kiểm tra cả hai UID và PromQL targets; không cần chạy Training/Release E2E.

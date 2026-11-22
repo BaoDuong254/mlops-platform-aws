@@ -4,8 +4,7 @@ source "$(dirname "$0")/m23-common.sh"
 require_mlops_ready
 kubectl -n mlops rollout status deployment/mlflow --timeout=10m
 export TRAINING_IMAGE DATA_BUCKET RUN_SUFFIX
-TRAINING_IMAGE="$(image_url training)"
-require_pushed_image "$TRAINING_IMAGE"
+TRAINING_IMAGE="$(resolve_pushed_image "$(image_url training)")"
 DATA_BUCKET="$(persistent_value bucket_names datasets)"
 RUN_SUFFIX="$(date -u +%Y%m%d%H%M%S)-$$"
 name="mlops-training-$RUN_SUFFIX"

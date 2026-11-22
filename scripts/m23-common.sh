@@ -9,35 +9,58 @@ persistent_value() {
   terraform -chdir="$PERSISTENT_DIR" output -json "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$key"
 }
 
+# Resolution priority: explicit per-image ref > legacy tag > explicit lock > fingerprint.
 image_tag() {
+  local purpose="${1:-training}"
+  case "$purpose" in training|mlflow|backup) ;; *) echo "Unknown image purpose: $purpose" >&2; return 2 ;; esac
   if [[ -n "${IMAGE_TAG:-}" ]]; then
+    [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ && "$IMAGE_TAG" != latest ]] || { echo 'Use an explicit valid IMAGE_TAG; latest is not allowed' >&2; return 1; }
     printf '%s\n' "$IMAGE_TAG"
   else
-    (cd "$ROOT_DIR" && sha256sum pyproject.toml uv.lock configs/*.yaml src/training/*.py \
-      deploy/training/Dockerfile deploy/mlflow/Dockerfile deploy/mlflow/server.py \
-      deploy/backup/Dockerfile deploy/backup/backup.py | sha256sum | cut -d' ' -f1) | sed 's/^/m23-/'
+    python3 "$ROOT_DIR/scripts/image_identity.py" tag "$purpose"
   fi
 }
 
 image_url() {
-  local purpose="$1" tag
-  tag="$(image_tag)"
-  if [[ "$purpose" == backup ]]; then purpose=mlflow; fi
-  printf '%s:%s\n' "$(persistent_value ecr_repository_urls "$purpose")" "$tag${2:-}"
+  local purpose="$1" reference_var repository tag suffix=''
+  reference_var="${purpose^^}_IMAGE_REF"
+  if [[ -n "${!reference_var:-}" ]]; then
+    python3 "$ROOT_DIR/scripts/image_identity.py" parse "${!reference_var}" >/dev/null || return
+    printf '%s\n' "${!reference_var}"
+    return
+  fi
+  if [[ -z "${IMAGE_TAG:-}" && -n "${IMAGE_LOCK_FILE:-}" ]]; then
+    python3 "$ROOT_DIR/scripts/image_identity.py" lock-ref "$IMAGE_LOCK_FILE" "$purpose"
+    return
+  fi
+  repository="$purpose"
+  if [[ "$purpose" == backup ]]; then
+    repository=mlflow
+    # The historical M23 bundle stored backup under <shared-tag>-backup.
+    if [[ -n "${IMAGE_TAG:-}" ]]; then suffix=-backup; fi
+  fi
+  repository="$(persistent_value ecr_repository_urls "$repository")" || return
+  tag="$(image_tag "$purpose")" || return
+  printf '%s:%s%s\n' "$repository" "$tag" "$suffix"
+}
+
+resolve_pushed_image() {
+  local image="$1" account region name image_id digest
+  local fields
+  fields="$(python3 "$ROOT_DIR/scripts/image_identity.py" parse "$image")" || return
+  IFS=$'\t' read -r account region name image_id <<< "$fields"
+  if ! digest="$(aws ecr describe-images --profile "$AWS_PROFILE" --region "$region" \
+    --registry-id "$account" --repository-name "$name" --image-ids "$image_id" \
+    --query 'imageDetails[0].imageDigest' --output text)"; then
+    printf 'Cannot resolve ECR image: %s\nIf this is a legacy image, run make cloud-images-migrate-plan then make cloud-images-migrate. Otherwise build/push the changed image purpose. Explicit *_IMAGE_REF, IMAGE_LOCK_FILE and legacy IMAGE_TAG remain optional recovery overrides.\n' "$image" >&2
+    return 1
+  fi
+  [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo 'ECR returned no valid digest' >&2; return 1; }
+  printf '%s@%s\n' "${image%%[:@]*}" "$digest"
 }
 
 require_pushed_image() {
-  local image="$1" repository name tag error
-  repository="${image%:*}"
-  name="${repository#*/}"
-  tag="${image##*:}"
-  if ! error="$(aws ecr describe-images --profile "$AWS_PROFILE" --region "$AWS_REGION" \
-    --repository-name "$name" --image-ids "imageTag=$tag" 2>&1)"; then
-    printf 'ECR image is missing or inaccessible: %s\n' "$image" >&2
-    printf '%s\n' "$error" >&2
-    echo 'Build and push images for this tag before deploying.' >&2
-    return 1
-  fi
+  resolve_pushed_image "$1" >/dev/null
 }
 
 render() {

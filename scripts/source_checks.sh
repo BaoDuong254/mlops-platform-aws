@@ -16,7 +16,7 @@ case "${1:?infrastructure or gitops}" in
     uv run --locked pytest -q tests/unit/test_m23_iac.py tests/unit/test_m23_manifests.py tests/unit/test_m23_backup.py
     ;;
   gitops)
-    uv run --locked pytest -q tests/unit/test_m31_manifests.py tests/unit/test_m32_release.py tests/unit/test_m33_config.py tests/unit/test_m4_manifests.py tests/unit/test_m41_addons.py tests/unit/test_m42_canary_tools.py tests/unit/test_m46_release_canary.py tests/unit/test_workflows.py tests/unit/test_auto_mlops.py
+    uv run --locked pytest -q tests/unit/test_m31_manifests.py tests/unit/test_m32_release.py tests/unit/test_m33_config.py tests/unit/test_grafana_history.py tests/unit/test_m4_manifests.py tests/unit/test_m41_addons.py tests/unit/test_m42_canary_tools.py tests/unit/test_m46_release_canary.py tests/unit/test_workflows.py tests/unit/test_auto_mlops.py
     uv run --locked python scripts/m31-validate-manifest.py
     schema_temp="$(mktemp -d)"
     trap 'rm -rf "$schema_temp"' EXIT
@@ -29,7 +29,9 @@ case "${1:?infrastructure or gitops}" in
       uv run --locked python scripts/validate_gitops.py --objects "$objects" --kubernetes-schema "$schema_temp/kubernetes.json" --rollouts-crds "$schema_temp/rollouts.yaml"
     done
     for script in scripts/*.sh; do bash -n "$script"; done
-    python3 -m json.tool deploy/monitoring/inference-dashboard.json >/dev/null
+    python3 -m json.tool deploy/monitoring/inference-load-hpa-dashboard.json >/dev/null
+    python3 -m json.tool deploy/monitoring/canary-performance-dashboard.json >/dev/null
+    uv run --locked python scripts/check_dashboard_metrics.py
     helm template aws-load-balancer-controller aws-load-balancer-controller --repo https://aws.github.io/eks-charts --version 3.6.2 --namespace kube-system -f deploy/platform/aws-load-balancer-controller-values.yaml --set-string clusterName=mlops-aws-dev --set-string region=ap-southeast-1 --set-string vpcId=vpc-00000000 >/dev/null
     helm template argo-rollouts argo-rollouts --repo https://argoproj.github.io/argo-helm --version 2.43.9 --namespace argo-rollouts -f deploy/platform/argo-rollouts-values.yaml >/dev/null
     helm template m33-prometheus prometheus --repo https://prometheus-community.github.io/helm-charts --version 29.37.1 --namespace monitoring -f deploy/monitoring/prometheus-values.yaml >/dev/null

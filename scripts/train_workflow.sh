@@ -23,7 +23,7 @@ cleanup() {
   exit "$result"
 }
 aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME:-mlops-aws-dev}" --region "$AWS_REGION"
-source_tree="$(git ls-files -z src configs pyproject.toml uv.lock deploy/training | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+source_tree="$(git ls-files -z src configs pyproject.toml uv.lock deploy/training | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 docker build -f deploy/training/Dockerfile --build-arg "GIT_SHA=$sha" --build-arg "SOURCE_TREE_SHA256=$source_tree" -t "$repo:$tag" .
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${repo%/*}"
 docker push "$repo:$tag"

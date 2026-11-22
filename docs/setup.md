@@ -97,6 +97,8 @@ VERIFY_TRAINING=1 make cloud-verify
 
 `k8s-bootstrap` cài Karpenter/Argo CD và NodePools; training Job trên Spot chỉ chạy khi có input. Nếu account thiếu EC2 Spot service-linked role, IAM admin tạo `AWSServiceRoleForEC2Spot` một lần trước Job. `cloud-data-sync` kiểm tra SHA256 và không tự sửa `source_verified=false`. Train Job dùng pipeline cùng local CLI, log run vào cloud MLflow. `make cloud-backup` và `make cloud-restore-check BACKUP_KEY=postgres/<file>.dump` kiểm chứng metadata backup; model artifacts trong bucket riêng cũng phải được giữ.
 
+> Image management mới: chạy `make cloud-images-migrate` một lần cho artifacts cũ; sau đó script tự tính fingerprint và tra ECR, không cần nhập tag/file lock. Các override legacy vẫn được hỗ trợ. Xem [restore và hai dashboard realtime](image-management-and-monitoring.md).
+
 **Dựng lại cluster khi S3 và ECR đã có dữ liệu** (sau một lần teardown): dataset, model artifacts, image và bản backup MLflow vẫn còn, nên không cần `data-download`, `cloud-images-*`, `cloud-data-sync` hay `cloud-train`. `make cloud-deploy` từ chối tạo database rỗng khi S3 có backup, nên phải khôi phục:
 
 ```bash

@@ -1,4 +1,4 @@
-# grafana-community/grafana 14.0.1. Credentials are supplied by a Secret at deploy time.
+# Grafana 14.0.1: two realtime dashboards, historical TestData preserved separately.
 admin:
   existingSecret: m33-grafana-admin
 rbac:
@@ -26,25 +26,41 @@ datasources:
   datasources.yaml:
     apiVersion: 1
     datasources:
-      - name: Prometheus
-        uid: prometheus
-        type: prometheus
-        access: proxy
-        url: http://m33-prometheus-server.monitoring.svc.cluster.local:80
-        isDefault: true
-        editable: false
+    - name: Prometheus
+      uid: prometheus
+      type: prometheus
+      access: proxy
+      url: http://m33-prometheus-server.monitoring.svc.cluster.local:80
+      isDefault: true
+      editable: false
 dashboardProviders:
   dashboardproviders.yaml:
     apiVersion: 1
     providers:
-      - name: inference
-        orgId: 1
-        folder: MLOps
-        type: file
-        updateIntervalSeconds: 30
-        disableDeletion: true
-        editable: false
-        options:
-          path: /var/lib/grafana/dashboards/inference
+    - name: inference
+      orgId: 1
+      folder: MLOps
+      type: file
+      updateIntervalSeconds: 30
+      disableDeletion: false
+      editable: false
+      options:
+        path: /var/lib/grafana/dashboards/inference
+    - name: historical
+      orgId: 1
+      folder: MLOps Historical
+      type: file
+      updateIntervalSeconds: 30
+      disableDeletion: true
+      editable: false
+      options:
+        path: /var/lib/grafana/dashboards/historical
 dashboardsConfigMaps:
   inference: m33-inference-dashboard
+  historical: m33-historical-dashboards
+extraConfigmapMounts:
+- name: historical-datasources
+  mountPath: /etc/grafana/provisioning/datasources/historical.yaml
+  subPath: historical.yaml
+  configMap: m33-historical-datasources
+  readOnly: true

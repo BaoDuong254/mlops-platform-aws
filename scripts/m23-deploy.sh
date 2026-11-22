@@ -3,8 +3,11 @@ set -euo pipefail
 source "$(dirname "$0")/m23-common.sh"
 check_cluster
 require_command python3
-MLFLOW_IMAGE="$(image_url mlflow)"
-require_pushed_image "$MLFLOW_IMAGE"
+MLFLOW_IMAGE="$(resolve_pushed_image "$(image_url mlflow)")"
+if [[ -n "${RESTORE_KEY:-}" ]]; then
+  BACKUP_IMAGE_REF="$(resolve_pushed_image "$(image_url backup)")"
+  export BACKUP_IMAGE_REF
+fi
 if kubectl -n mlops get secret mlflow-db >/dev/null 2>&1; then
   if [[ -n "${MLFLOW_DB_PASSWORD:-}" ]]; then
     saved_password="$(kubectl -n mlops get secret mlflow-db -o jsonpath='{.data.password}' | base64 -d)"

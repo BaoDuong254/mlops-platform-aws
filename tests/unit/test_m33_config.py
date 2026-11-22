@@ -33,37 +33,60 @@ def test_hpa_and_argocd_agree_on_replica_ownership():
     assert app["spec"]["syncPolicy"]["automated"] == {"prune": False, "selfHeal": True}
 
 
-def test_monitoring_is_private_ephemeral_and_scrapes_inference_pods_only():
+def test_monitoring_is_private_ephemeral_with_minimal_hpa_state_collection():
     prom = read_yaml("deploy/monitoring/prometheus-values.yaml")
     grafana = read_yaml("deploy/monitoring/grafana-values.yaml")
     assert prom["server"]["persistentVolume"]["enabled"] is False
     assert prom["server"]["retention"] == "24h"
     assert prom["server"]["service"]["type"] == grafana["service"]["type"] == "ClusterIP"
-    assert not prom["rbac"]["create"]
-    assert not grafana["rbac"]["create"]
+    assert not prom["rbac"]["create"] and not grafana["rbac"]["create"]
     assert all(not prom[name]["enabled"] for name in (
-        "alertmanager", "kube-state-metrics", "prometheus-node-exporter", "prometheus-pushgateway"
-    ))
+        "alertmanager", "prometheus-node-exporter", "prometheus-pushgateway"))
+    state = prom["kube-state-metrics"]
+    assert state["enabled"] and state["namespaces"] == ["mlops"]
+    assert state["collectors"] == ["horizontalpodautoscalers", "pods"]
+    assert state["rbac"] == {"create": True, "useClusterRole": False}
+    assert 'kube_horizontalpodautoscaler_status_target_metric' in state['metricAllowlist']
     jobs = prom["serverFiles"]["prometheus.yml"]["scrape_configs"]
-    assert len(jobs) == 1 and jobs[0]["job_name"] == "inference-api"
+    assert [job['job_name'] for job in jobs] == ['inference-api', 'mlops-state']
     assert jobs[0]["kubernetes_sd_configs"][0]["namespaces"]["names"] == ["mlops"]
+    assert jobs[0]['scrape_interval'] == jobs[1]['scrape_interval'] == '15s'
     assert grafana["admin"]["existingSecret"] == "m33-grafana-admin"
     assert grafana["deploymentStrategy"]["type"] == "Recreate"
-    assert grafana["dashboardProviders"]["dashboardproviders.yaml"]["providers"][0]["updateIntervalSeconds"] > 10
-    assert grafana["datasources"]["datasources.yaml"]["datasources"][0]["url"].startswith(
-        "http://m33-prometheus-server.monitoring.svc.cluster.local"
-    )
+    providers = grafana["dashboardProviders"]["dashboardproviders.yaml"]["providers"]
+    assert not providers[0]['disableDeletion']  # prune only old file-provisioned realtime UID
+    assert providers[1]['disableDeletion'] and providers[1]['name'] == 'historical'
+    assert grafana['dashboardsConfigMaps']['historical'] == 'm33-historical-dashboards'
 
 
-def test_dashboard_matches_serving_metrics_contract():
-    dashboard = json.loads((ROOT / "deploy/monitoring/inference-dashboard.json").read_text())
-    queries = [panel["targets"][0]["expr"] for panel in dashboard["panels"]]
-    assert len(queries) == 7  # 4 panel Phase 3 + 3 panel canary theo ReplicaSet
-    assert sum('rollouts_pod_template_hash' in query for query in queries) == 3
-    assert any("inference_http_requests_total" in query for query in queries)
-    assert any("histogram_quantile" in query and "inference_http_request_duration_seconds_bucket" in query for query in queries)
-    assert any("inference_http_errors_total" in query and "or vector(0)" in query for query in queries)
-    assert any('up{job="inference-api"}' in query for query in queries)
+def test_two_live_dashboards_keep_units_gates_and_no_guessed_roles_or_fake_idle_data():
+    paths = list((ROOT / 'deploy/monitoring').glob('*-dashboard.json'))
+    assert len(paths) == 2
+    dashboards = [json.loads(path.read_text()) for path in paths]
+    assert {doc['uid'] for doc in dashboards} == {'m33-load-hpa', 'm33-canary'}
+    for doc in dashboards:
+        assert doc['refresh'] == '15s' and doc['time'] == {'from': 'now-15m', 'to': 'now'}
+        for panel in doc['panels']:
+            for target in panel.get('targets', []):
+                assert target['datasource'] == {'type': 'prometheus', 'uid': 'prometheus'}
+                assert 'or vector(0)' not in target['expr']
+                assert 'testdata' not in json.dumps(target).lower()
+        # No overlapping panel rectangles, including explanatory text.
+        for i, first in enumerate(doc['panels']):
+            a=first['gridPos']
+            for second in doc['panels'][i+1:]:
+                b=second['gridPos']
+                assert a['x']+a['w']<=b['x'] or b['x']+b['w']<=a['x'] or a['y']+a['h']<=b['y'] or b['y']+b['h']<=a['y']
+    canary = next(doc for doc in dashboards if doc['uid']=='m33-canary')
+    for panel in canary['panels']:
+        assert 'rollouts_pod_template_hash' in panel['targets'][0]['expr']
+        assert panel['targets'][0]['legendFormat'] == 'RS {{rollouts_pod_template_hash}}'
+    assert [panel['fieldConfig']['defaults']['thresholds']['steps'][1]['value'] for panel in canary['panels'][:3]] == [.2, 500, 1]
+    gate = next(yaml.safe_load_all((ROOT/'deploy/gitops/inference/analysis-template.yaml').read_text()))
+    conditions = {metric['name']:metric['successCondition'] for metric in gate['spec']['metrics']}
+    assert conditions['p95-latency-seconds']=='result[0] < 0.5'
+    assert conditions['error-rate']=='result[0] < 0.01'
+    assert conditions['canary-request-rate']=='result[0] >= 0.2'
 
 
 def test_discovery_rbac_and_load_job_stay_in_scope():

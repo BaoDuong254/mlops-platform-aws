@@ -13,8 +13,7 @@ fi
 export BACKUP_MODE="$mode" BACKUP_KEY="$key" BACKUP_BUCKET
 BACKUP_BUCKET="$(persistent_value bucket_names mlflow_backups)"
 export BACKUP_IMAGE
-BACKUP_IMAGE="$(image_url backup -backup)"
-require_pushed_image "$BACKUP_IMAGE"
+BACKUP_IMAGE="$(resolve_pushed_image "$(image_url backup)")"
 BACKUP_JOB_SUFFIX="${mode}-$(date -u +%Y%m%d%H%M%S)-$$"
 export BACKUP_JOB_SUFFIX
 name="mlops-backup-$BACKUP_JOB_SUFFIX"
