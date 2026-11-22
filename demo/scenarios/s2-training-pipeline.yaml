@@ -1,0 +1,84 @@
+id: S2
+title: Training Experiment / Automatic Pipeline
+engine: pipeline
+goal: >-
+  Khai báo hyperparameters thử nghiệm, preview Validation Gate tại local, rồi (khi chọn mode automatic)
+  merge thay đổi `configs/training.yaml` để CI → Spot Training → Gate → Release → Canary → Champion tự chạy.
+  Kết quả được ghi nhận đúng thực tế: Approved hoặc Rejected.
+mutates_aws: true
+lock: eks-mutation
+estimated_minutes: 60
+inputs:
+  mode: {type: enum, values: [preview, automatic]}
+  candidate_config: {type: demo_config}
+  model_overrides: {type: model_overrides}
+preflight: [tools, aws_identity, kube_context, gh_access, git_main_synced, auto_mode_enabled,
+            no_active_workflows, no_active_jobs, rollout_stable, champion]
+initial_state:
+  - "`AUTO_MLOPS_ENABLED=true`, baseline SHA đã review; checkpoint trước đó không ở trạng thái blocked."
+  - Champion và stable digest được preflight ghi lại để đối chiếu.
+  - Local preview đã chạy (`demo preview`) và so với MAE champion lấy từ cloud MLflow.
+input_change: >-
+  Chỉ khối `model:` của configs/training.yaml đổi thành {model_overrides} (PR một file). Evaluation identity không đổi.
+trigger:
+  - id: local-preview
+    effect: local
+    run: uv run --locked python -m demo.runner preview --preset {preset} --scenario S2 --train
+  - id: worktree
+    effect: local
+    automatic_only: true
+    run: git worktree add --detach {worktree} origin/main
+  - id: apply-candidate
+    effect: local
+    automatic_only: true
+    run: uv run --locked python -m demo.runner apply-candidate --preset {preset} --target {worktree}/configs/training.yaml
+  - id: branch
+    effect: local
+    automatic_only: true
+    run: git -C {worktree} switch -c {branch}
+  - id: stage
+    effect: local
+    automatic_only: true
+    run: git -C {worktree} add configs/training.yaml
+  - id: commit
+    effect: local
+    automatic_only: true
+    run: 'git -C {worktree} commit -m "demo(S2) candidate training hyperparameters ({preset})"' 
+  - id: push
+    effect: git-remote
+    automatic_only: true
+    run: git -C {worktree} push -u origin {branch}
+  - id: pull-request
+    effect: git-remote
+    automatic_only: true
+    run: 'gh pr create --repo {github_repo} --base main --head {branch} --title "demo(S2) candidate training hyperparameters" --body "Demo scenario S2 ({preset}). Model block only; evaluation identity unchanged."' 
+  - id: remove-worktree
+    effect: local
+    automatic_only: true
+    run: git worktree remove --force {worktree}
+  - id: merge
+    effect: manual
+    automatic_only: true
+    instruction: Review rồi merge PR trên GitHub UI (merge commit/squash). Runner chờ CI run trên main của merge commit.
+github_ui:
+  workflow: Pull request → merge vào main (Source CI tự gọi Training/Release)
+  branch: "{branch}"
+  fields: {}
+observe:
+  - {ui: GitHub Actions, what: "Source CI → job `Automatic MLOps` (reusable train.yml → release.yml). Plan reason = training-inputs-changed."}
+  - {ui: MLflow, what: "Run mới; nếu approved: version mới READY, tags validation_status=approved; sau release: alias champion = version mới."}
+  - {ui: Argo CD, what: "Nếu approved: GitOps commit `m32: release ...`, Rollout canary 10% → 50% → promote."}
+  - {ui: Grafana, what: "Dashboard `Canary Deployment & Performance`: request rate/P95 theo ReplicaSet."}
+verify:
+  expect: approved_or_rejected
+  timeout_minutes: 240
+  criteria:
+    - Preview local và quyết định cloud được ghi cạnh nhau (không giả định Approved).
+    - "Rejected: workflow success, Release skipped, không version mới, champion không đổi."
+    - "Approved: version READY/approved, Release success, GitOps commit, Rollout promoted, champion = version mới."
+    - Checkpoint automatic kết thúc completed (không blocked).
+recovery:
+  checks: [no_training_jobs, no_traffic_jobs, rollout_stable, argocd_synced_main, champion_consistent]
+  notes:
+    - "Approved + promoted: config mới trở thành chuẩn; không cần restore."
+    - "Rejected: chạy `demo recover --scenario S2` để in quy trình restore (tắt auto → PR restore → kiểm tra fingerprint = trước demo → set AUTO_MLOPS_BASELINE_SHA → bật auto)."

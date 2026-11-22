@@ -1,0 +1,45 @@
+id: S5
+title: HPA Autoscaling & Monitoring
+engine: load
+goal: >-
+  Chạy các profile tải k6 (Job trong cluster, giới hạn sẵn của m33.sh), lấy mẫu RPS, CPU utilization,
+  HPA desired/current, Pods và Karpenter NodeClaims; đánh giá scale-out/scale-in theo metrics thực tế.
+mutates_aws: true
+lock: eks-mutation
+estimated_minutes: 20
+inputs:
+  load_profiles: {type: load_profiles}
+  target: {type: enum, values: [service]}
+  sample_interval_seconds: {type: int, min: 5, max: 60}
+  observe_after_seconds: {type: int, min: 0, max: 1200}
+preflight: [tools, kube_context, no_active_workflows, no_active_jobs, rollout_stable, monitoring, hpa_metrics]
+initial_state:
+  - HPA inference-api có CPU metric; replicas = minReplicas (thường 1); không có Job k6/traffic khác.
+  - Prometheus target UP; Grafana dashboard `Inference Load & HPA`.
+input_change: "Profiles: {load_profiles_summary}."
+trigger:
+  - id: load
+    effect: aws
+    per_profile: true
+    run: make monitoring-load-test M33_TARGET={target} M33_VUS={vus} M33_RATE={rate} M33_DURATION_SECONDS={duration_seconds}
+github_ui:
+  workflow: "(không dùng GitHub Actions — tải chạy bằng k6 Job trong cluster)"
+  branch: "-"
+  fields: {}
+observe:
+  - {ui: Grafana, what: "`Inference Load & HPA`: Request Throughput, CPU Utilization vs HPA Target (60%), HPA Replicas Current/Desired, P95."}
+  - {ui: kubectl, what: "`kubectl -n mlops get hpa inference-api -w`; `kubectl get nodeclaims -w`."}
+  - {ui: AWS EKS console, what: "Compute → Nodes: node inference mới (nếu Karpenter cần thêm capacity)."}
+verify:
+  expect: hpa_consistent
+  timeout_minutes: 40
+  criteria:
+    - Mỗi profile k6 hoàn tất; số iterations/dropped được ghi từ log.
+    - Nếu CPU trung bình vượt target 60% thì desired replicas phải tăng (tối đa maxReplicas).
+    - Nếu CPU không vượt target, không scale là hành vi đúng (không ép kết luận 1→3→1).
+    - Sau tải, desired replicas trở về minReplicas trong cửa sổ quan sát (stabilization 300s), hoặc ghi rõ còn pending.
+recovery:
+  checks: [no_load_jobs, rollout_stable]
+  notes:
+    - Runner chỉ xóa Job k6 do chính nó tạo; không chạy `make monitoring-cleanup` (gỡ cả monitoring).
+    - "Scale-in có thể cần >5 phút sau tải (stabilizationWindowSeconds=300)."

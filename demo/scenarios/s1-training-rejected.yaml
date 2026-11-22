@@ -1,0 +1,50 @@
+# Scenario definition. Commands are argv templates: every {placeholder} is validated
+# by the scenario input types before rendering, and commands never pass through a shell.
+id: S1
+title: Training Rejected
+engine: training
+goal: >-
+  Một candidate chất lượng kém đi qua Cloud Training thật (Spot Job, MLflow run) và bị
+  Validation Gate từ chối; không có Registry version mới, không release, champion giữ nguyên.
+mutates_aws: true
+lock: eks-mutation
+estimated_minutes: 25
+inputs:
+  training_config: {type: demo_config}
+  model_overrides: {type: model_overrides}
+preflight: [tools, aws_identity, kube_context, gh_access, git_main_synced, demo_config_on_main,
+            no_active_workflows, no_active_jobs, rollout_stable, champion]
+initial_state:
+  - Argo CD `inference-api` Synced/Healthy; Rollout Healthy, stable hash = current hash.
+  - MLflow alias `champion` trỏ tới version đang phục vụ (preflight ghi lại).
+  - "`{training_config}` đã nằm trên `origin/main` và khớp preset (render-configs --check)."
+input_change: >-
+  Chỉ đổi khối `model:`: {model_overrides}. Dataset, splits, seed, sample size và gate 1% giữ nguyên
+  (kiểm tra bằng `training_result.py validate-config`).
+trigger:
+  - id: dispatch-training
+    effect: aws
+    run: gh workflow run train.yml --repo {github_repo} --ref main -f training_config={training_config}
+github_ui:
+  workflow: Cloud Training (train.yml)
+  branch: main
+  fields: {training_config: "{training_config}"}
+observe:
+  - {ui: GitHub Actions, what: "Run `Cloud Training`: plan → MLOps Cloud Training (build image, Spot Job, verify). Step summary ghi `Validation decision: **rejected**`."}
+  - {ui: AWS EKS / kubectl, what: "Job `mlops-training-gh-<run>-<attempt>` trong namespace mlops; Karpenter NodeClaim Spot: `kubectl get nodeclaims -w`."}
+  - {ui: MLflow, what: "Experiment `nyc-taxi-trip-duration`: run mới FINISHED, tag validation_status=rejected, validation MAE cao hơn reference."}
+  - {ui: MLflow Registry, what: "Không có version mới; alias champion không đổi."}
+verify:
+  expect: rejected
+  timeout_minutes: 120
+  criteria:
+    - Workflow conclusion = success (rejected là quyết định hợp lệ, không phải lỗi).
+    - training-result.json validation_status = rejected, model_version = null.
+    - MLflow run FINISHED với tag validation_status = rejected.
+    - Không có Registry version nào gắn run ID này.
+    - Champion sau chạy = champion trước chạy; không có release/GitOps commit mới.
+recovery:
+  checks: [no_training_jobs, champion_unchanged, rollout_stable, gitops_unchanged]
+  notes:
+    - Không cần restore config: dispatch manual không đổi configs/training.yaml.
+    - Nếu workflow fail (không phải rejected), kiểm tra EKS publicAccessCidrs đã restore và Job đã bị xóa.

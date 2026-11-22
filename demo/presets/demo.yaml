@@ -1,0 +1,38 @@
+preset: demo
+description: >-
+  Bộ B — Live Demo với giảng viên. Diễn biến rõ trên GitHub Actions, MLflow, Argo CD và Grafana.
+  Version release = champion hiện tại (resolve + kiểm tra approved/READY ở preflight, không hardcode).
+defaults:
+  github_repo: HaiXon231/mlops-platform-aws
+  aws_account_id: "160616607747"
+  aws_region: ap-southeast-1
+  cluster: mlops-aws-dev
+  model_name: nyc-taxi-trip-duration
+sequence: [S1, S2, S3, S4, S5]
+sequence_notes:
+  - "S2 automatic Approved + promoted đã bao gồm luồng S3; khi đó có thể bỏ S3. S2 Rejected → chạy S3."
+  - "S2 Rejected cần `recover --scenario S2` (restore config) trước khi kết thúc buổi demo, không cần trước S3/S4/S5."
+  - Không chạy S5 khi Release/canary đang chạy (HPA và traffic Job sẽ trộn tín hiệu).
+scenarios:
+  S1:
+    training_config: configs/demo-rejected.yaml
+    model_overrides: {n_estimators: 1, num_leaves: 2}
+  S2:
+    mode: automatic
+    candidate_config: configs/demo-candidate.yaml
+    model_overrides: {n_estimators: 3000, num_leaves: 255, min_child_samples: 50}
+  S3:
+    model_name: nyc-taxi-trip-duration
+    model_version: champion
+    canary_test_cpu: "off"
+  S4:
+    model_name: nyc-taxi-trip-duration
+    model_version: champion
+    canary_test_cpu: 100m
+  S5:
+    target: service
+    load_profiles:
+      - {name: warmup-20rps, rate: 20, vus: 10, duration_seconds: 120}
+      - {name: peak-100rps, rate: 100, vus: 30, duration_seconds: 300}
+    sample_interval_seconds: 15
+    observe_after_seconds: 480

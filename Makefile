@@ -404,3 +404,33 @@ canary-platform-cleanup:
 .PHONY: auto-pipeline-test
 auto-pipeline-test:
 	$(UV) run --locked pytest -q tests/unit/test_auto_mlops.py tests/unit/test_workflows.py
+# Live demo & verification framework (demo/; see DEMO_RUNBOOK.md). Default is dry-run.
+.PHONY: demo-test demo-validate demo-list demo-show demo-run demo-execute demo-preflight demo-verify \
+        demo-recover demo-preview demo-sequence
+DEMO_PRESET ?= verification
+DEMO_SCENARIO ?= S1
+DEMO := $(UV) run --locked python -m demo.runner
+demo-test:
+	$(UV) run --locked pytest -q tests/unit/test_demo_framework.py
+	$(DEMO) validate
+demo-validate:
+	$(DEMO) validate
+demo-list:
+	$(DEMO) list
+demo-show:
+	$(DEMO) show --preset $(DEMO_PRESET) --scenario $(DEMO_SCENARIO)
+demo-run:
+	$(DEMO) run --preset $(DEMO_PRESET) --scenario $(DEMO_SCENARIO)
+demo-execute:
+	$(DEMO) run --preset $(DEMO_PRESET) --scenario $(DEMO_SCENARIO) --execute
+demo-preflight:
+	$(DEMO) preflight --preset $(DEMO_PRESET) --scenario $(DEMO_SCENARIO)
+demo-verify:
+	@test -n "$(RUN_ID)" || { echo 'Set RUN_ID=<GitHub Actions run ID>'; exit 1; }
+	$(DEMO) verify --preset $(DEMO_PRESET) --scenario $(DEMO_SCENARIO) --run-id $(RUN_ID)
+demo-recover:
+	$(DEMO) recover --preset $(DEMO_PRESET) --scenario $(DEMO_SCENARIO)
+demo-preview:
+	$(DEMO) preview --preset $(DEMO_PRESET) --scenario S2 --train
+demo-sequence:
+	$(DEMO) sequence --preset $(DEMO_PRESET)

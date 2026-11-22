@@ -1,0 +1,46 @@
+id: S3
+title: Successful Canary
+engine: release
+goal: >-
+  Phát hành một Approved Model Version bằng release.yml (canary_test_cpu=off): Docker build, ECR push,
+  GitOps commit, Candidate ReplicaSet, smoke, 10% → 50%, AnalysisRun Successful, promotion và champion.
+mutates_aws: true
+lock: eks-mutation
+estimated_minutes: 25
+inputs:
+  model_name: {type: model_name}
+  model_version: {type: model_version}
+  canary_test_cpu: {type: enum, values: ["off"]}
+preflight: [tools, aws_identity, kube_context, gh_access, git_main_synced, no_active_workflows,
+            no_active_jobs, rollout_stable, argocd_synced_main, champion, model_version_approved, monitoring]
+initial_state:
+  - Rollout Healthy; Argo CD Synced/Healthy tại HEAD của main; live template = Git template.
+  - Model version cần release là approved/READY trong Registry (preflight resolve `champion` nếu được chọn).
+  - Prometheus target inference-api UP (gates cần metrics).
+input_change: "Không sửa file. Input dispatch: model_name={model_name}, model_version={model_version}, canary_test_cpu={canary_test_cpu}."
+trigger:
+  - id: dispatch-release
+    effect: aws
+    run: gh workflow run release.yml --repo {github_repo} --ref main -f model_name={model_name} -f model_version={model_version} -f canary_test_cpu={canary_test_cpu}
+github_ui:
+  workflow: Approved Model Release (release.yml)
+  branch: main
+  fields: {model_name: "{model_name}", model_version: "{model_version}", canary_test_cpu: "{canary_test_cpu}"}
+observe:
+  - {ui: GitHub Actions, what: "Step `Export, build, deploy, verify and promote one release`: docker build/push, `m32: release ...` commit, verifier chờ promoted."}
+  - {ui: Argo CD, what: "Application inference-api sync commit mới; cây Rollout có ReplicaSet mới (canary) cạnh stable."}
+  - {ui: kubectl, what: "`make canary-status` (Rollout step, AnalysisRuns); `make canary-split M42_WINDOW=45s` (tỷ lệ request ~10% rồi ~50%)."}
+  - {ui: Grafana, what: "`Canary Deployment & Performance`: Request Rate/P95/5xx theo ReplicaSet."}
+  - {ui: MLflow, what: "Sau verify: alias champion = version đã release (đọc lại)."}
+verify:
+  expect: promoted
+  timeout_minutes: 90
+  criteria:
+    - Workflow conclusion = success; artifact m32-result.json có champion promoted/already-promoted.
+    - Có đúng một GitOps commit `m32: release m32-<run>-<attempt>` và không có revert.
+    - AnalysisRun background của release = Successful; Rollout Healthy, stable hash = hash mới.
+    - Live Pod image = digest trong m32-expected.json; champion = model_version.
+recovery:
+  checks: [no_traffic_jobs, rollout_stable, argocd_synced_main, live_matches_git, champion_consistent, eks_cidrs_restored]
+  notes:
+    - Không cần rollback: release thành công là trạng thái stable mới.
