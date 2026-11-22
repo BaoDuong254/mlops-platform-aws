@@ -5,7 +5,7 @@ metadata:
   namespace: mlops
   labels:
     app: inference-api
-    mlops.aws/model-version: '3'
+    mlops.aws/model-version: '4'
 spec:
   replicas: 1
   revisionHistoryLimit: 2
@@ -21,15 +21,15 @@ spec:
     metadata:
       labels:
         app: inference-api
-        mlops.aws/model-version: '3'
+        mlops.aws/model-version: '4'
       annotations:
         prometheus.io/scrape: 'true'
         prometheus.io/path: /metrics
         prometheus.io/port: '8000'
-        mlops.aws/release-id: m32-44220667678-1
-        mlops.aws/artifact-checksum: 169e6981394d752cbdfe853e7fbd17878f942322380f7f29d00c7a6531a92b1f
-        mlops.aws/mlflow-run-id: 363714d6a7634ebbb177026f93b6e7f1
-        mlops.aws/serving-git-sha: d97360738986f7cd0ffaa2290a5c8f4ecbe95171
+        mlops.aws/release-id: m32-44997994758-1
+        mlops.aws/artifact-checksum: 97f6993dbc813e88b7a53653ed6de7d3fc96ab8c87505720d02984dda8534df0
+        mlops.aws/mlflow-run-id: 764d7cce511d42dd91dbd9f178d34949
+        mlops.aws/serving-git-sha: 8798a620a191f07e8ac361f238c2fcf463b60ed4
     spec:
       terminationGracePeriodSeconds: 35
       nodeSelector:
@@ -46,7 +46,7 @@ spec:
         runAsGroup: 10001
       containers:
       - name: inference-api
-        image: 160616607747.dkr.ecr.ap-southeast-1.amazonaws.com/mlops-aws-inference-dev@sha256:5c0dd2ee04d6f1cf02a10051f881aa3d63b7bc0e7d24fecaddbb6874870f82ce
+        image: 160616607747.dkr.ecr.ap-southeast-1.amazonaws.com/mlops-aws-inference-dev@sha256:02fb7002a607c079c955afd7d81db15f1b84217d0b048abd67ddb16ab26ce703
         imagePullPolicy: IfNotPresent
         lifecycle:
           preStop:

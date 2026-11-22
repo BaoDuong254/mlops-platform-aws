@@ -7,11 +7,11 @@ metadata:
     app: inference-api
   annotations:
     mlops.aws/model-name: nyc-taxi-trip-duration
-    mlops.aws/model-version: '3'
-    mlops.aws/release-id: m32-44220667678-1
-    mlops.aws/artifact-checksum: 169e6981394d752cbdfe853e7fbd17878f942322380f7f29d00c7a6531a92b1f
-    mlops.aws/serving-git-sha: d97360738986f7cd0ffaa2290a5c8f4ecbe95171
-    mlops.aws/mlflow-run-id: 363714d6a7634ebbb177026f93b6e7f1
+    mlops.aws/model-version: '4'
+    mlops.aws/release-id: m32-44997994758-1
+    mlops.aws/artifact-checksum: 97f6993dbc813e88b7a53653ed6de7d3fc96ab8c87505720d02984dda8534df0
+    mlops.aws/serving-git-sha: 8798a620a191f07e8ac361f238c2fcf463b60ed4
+    mlops.aws/mlflow-run-id: 764d7cce511d42dd91dbd9f178d34949
 spec:
   replicas: 1
   revisionHistoryLimit: 2
